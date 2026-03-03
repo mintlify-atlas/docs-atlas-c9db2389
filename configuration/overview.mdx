@@ -1,0 +1,175 @@
+---
+title: 'Configuration Overview'
+description: 'Complete guide to configuring Filly Discord Token Filler'
+icon: 'sliders'
+---
+
+Filly Discord Token Filler uses a combination of configuration files to control its behavior. All configuration files are located in the `input/` directory.
+
+## Configuration Files
+
+<CardGroup cols={2}>
+  <Card title="config.json" icon="gear" href="/configuration/captcha">
+    Main configuration file for captcha settings, threading, delays, and join limits
+  </Card>
+  
+  <Card title="tokens.txt" icon="key" href="/configuration/tokens">
+    Discord authentication tokens for joining servers
+  </Card>
+  
+  <Card title="invites.txt" icon="envelope" href="/configuration/invites">
+    Discord server invite links to join
+  </Card>
+  
+  <Card title="proxies.txt" icon="shield" href="/configuration/proxies">
+    HTTP/HTTPS proxy list with session rotation support
+  </Card>
+</CardGroup>
+
+## Directory Structure
+
+```
+project/
+├── input/
+│   ├── config.json      # Main configuration
+│   ├── tokens.txt       # Discord tokens (one per line)
+│   ├── invites.txt      # Invite codes (one per line)
+│   └── proxies.txt      # Proxy list (one per line)
+├── output/
+│   ├── joined.txt       # Successfully joined tokens
+│   ├── invalid.txt      # Invalid tokens
+│   ├── locked.txt       # Locked tokens
+│   ├── captcha.txt      # Tokens that encountered captcha
+│   ├── failed.txt       # Failed join attempts
+│   └── filled_tokens.txt # Tokens that reached max joins
+└── index.py             # Main script
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure captcha solver">
+    Edit `input/config.json` to set up your captcha solver service and API key.
+    
+    ```json
+    {
+      "captcha": {
+        "solve_captcha": true,
+        "service": "razorcap",
+        "apikey": "your-api-key-here",
+        "proxyless": false
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Add tokens">
+    Add your Discord tokens to `input/tokens.txt`, one per line:
+    
+    ```
+    MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+    email:password:token
+    username:password:token
+    ```
+  </Step>
+  
+  <Step title="Add invites">
+    Add Discord invite codes to `input/invites.txt`, one per line:
+    
+    ```
+    abc123xyz
+    https://discord.gg/example
+    discord.gg/another
+    ```
+  </Step>
+  
+  <Step title="Configure proxies (optional)">
+    If using proxies, add them to `input/proxies.txt`:
+    
+    ```
+    username:password@proxy.example.com:8080
+    username:password@proxy.example.com:8080:sessionid
+    ```
+    
+    Set `"proxyless": false` in `config.json`.
+  </Step>
+</Steps>
+
+## Configuration Options
+
+### Main Settings
+
+<ParamField path="threads" type="number" default="10">
+  Number of concurrent threads for joining servers. Maximum threads used is the minimum of this value and the number of available tokens.
+</ParamField>
+
+<ParamField path="proxyless" type="boolean" default="true">
+  Whether to run without proxies. Set to `false` to use proxies from `input/proxies.txt`.
+</ParamField>
+
+<ParamField path="max_joins" type="number" default="100">
+  Maximum number of servers each token will join. Tokens that reach this limit are saved to `output/filled_tokens.txt`.
+</ParamField>
+
+<ParamField path="delay" type="number" default="1">
+  Delay in seconds between join attempts per thread. Set to `0` for no delay.
+</ParamField>
+
+### Captcha Settings
+
+See the [Captcha Configuration](/configuration/captcha) page for detailed captcha solver setup.
+
+## Output Files
+
+The tool automatically creates output files in the `output/` directory:
+
+- **joined.txt** - Tokens that successfully joined servers
+- **invalid.txt** - Tokens that returned 401 (unauthorized)
+- **locked.txt** - Tokens that returned 403 (forbidden/locked)
+- **captcha.txt** - Tokens that encountered captcha challenges
+- **failed.txt** - Tokens that failed for other reasons
+- **failed_token.txt** - Tokens that failed due to "Unknown Message" errors
+- **failed_captcha.txt** - Tokens that failed due to captcha solver issues
+- **filled_tokens.txt** - Tokens that successfully reached max_joins limit
+
+<Note>
+Invalid and locked tokens are automatically removed from `input/tokens.txt` to prevent reuse.
+</Note>
+
+## Best Practices
+
+<Warning>
+**Rate Limiting**: Discord has aggressive rate limiting. Use delays and proxies to avoid detection.
+</Warning>
+
+<Tip>
+- Start with a small number of threads (5-10) and increase gradually
+- Use a delay of at least 1-2 seconds between requests
+- Rotate proxies with session IDs to distribute requests
+- Monitor the output files to identify problematic tokens
+</Tip>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="All tokens are getting locked">
+    - Increase the delay between requests
+    - Use proxies to distribute requests
+    - Check if your tokens are fresh and valid
+    - Reduce the number of concurrent threads
+  </Accordion>
+  
+  <Accordion title="Captcha solver not working">
+    - Verify your API key is correct in `config.json`
+    - Check your captcha service balance
+    - Ensure the service name matches exactly (case-sensitive)
+    - Review the [Captcha Configuration](/configuration/captcha) page
+  </Accordion>
+  
+  <Accordion title="Proxies not being used">
+    - Set `"proxyless": false` in `config.json`
+    - Verify proxy format in `input/proxies.txt`
+    - Check proxy authentication credentials
+    - See [Proxy Configuration](/configuration/proxies) for format details
+  </Accordion>
+</AccordionGroup>

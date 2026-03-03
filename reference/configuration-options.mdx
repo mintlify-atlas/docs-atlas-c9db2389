@@ -1,0 +1,232 @@
+---
+title: Configuration Options
+description: Complete reference for all config.json configuration options
+---
+
+This page documents all available configuration options for Filly Discord Token Filler. Configuration is stored in `input/config.json`.
+
+## Configuration File Location
+
+The configuration file must be located at:
+```
+input/config.json
+```
+
+## JoinerConfig DataClass
+
+The configuration is loaded into the `JoinerConfig` dataclass (index.py:31-38):
+
+```python
+@dataclass
+class JoinerConfig:
+    delay: int
+    proxyless: bool
+    threads: int
+    max_joins: int
+    captcha: Dict
+```
+
+## Top-Level Configuration
+
+<ParamField path="threads" type="integer" default="10" required>
+  Number of concurrent threads to use for joining servers.
+  
+  - Controls how many tokens can be processed simultaneously
+  - Limited by the number of available tokens (index.py:249)
+  - Higher values increase speed but may trigger rate limits
+  
+  **Example:**
+  ```json
+  "threads": 10
+  ```
+</ParamField>
+
+<ParamField path="proxyless" type="boolean" default="true" required>
+  Whether to run without proxies.
+  
+  - When `true`: Runs without proxies (direct connections)
+  - When `false`: Loads proxies from `input/proxies.txt` (index.py:84)
+  - Proxy format supports session ID randomization (index.py:85-87)
+  
+  **Example:**
+  ```json
+  "proxyless": true
+  ```
+</ParamField>
+
+<ParamField path="max_joins" type="integer" default="100" required>
+  Maximum number of servers each token should join.
+  
+  - Limits how many invites each token will process
+  - Tokens that reach this limit are saved to `output/filled_tokens.txt` (index.py:270-271)
+  - Actual joins limited to available invites (index.py:248)
+  - Tracked per-token via `TokenManager.increment_joins()` (index.py:267)
+  
+  **Example:**
+  ```json
+  "max_joins": 100
+  ```
+</ParamField>
+
+<ParamField path="delay" type="integer" default="1" required>
+  Delay in seconds between join attempts.
+  
+  - Sleep duration after each join operation (index.py:220-221)
+  - Set to `0` to disable delay
+  - Helps avoid rate limiting
+  
+  **Example:**
+  ```json
+  "delay": 1
+  ```
+</ParamField>
+
+## Captcha Configuration
+
+<ParamField path="captcha" type="object" required>
+  Configuration for captcha solving services.
+  
+  The captcha object contains settings for automatic captcha detection and solving.
+</ParamField>
+
+<ParamField path="captcha.solve_captcha" type="boolean" default="true" required>
+  Enable or disable automatic captcha solving.
+  
+  - When `true`: Automatically detects and solves captchas (index.py:189)
+  - When `false`: Skip captcha solving, joins will fail if captcha is encountered
+  - Captcha detection checks for `"captcha_sitekey"` in response (index.py:189)
+  
+  **Example:**
+  ```json
+  "solve_captcha": true
+  ```
+</ParamField>
+
+<ParamField path="captcha.service" type="string" default="razorcap" required>
+  The captcha solving service to use.
+  
+  **Supported services:**
+  - `razorcap` - RazorCap API (solver.py:55)
+  - `aisolver` - AISolver2 (solver.py:121)
+  - `hcoptcha` - HCOptcha API (solver.py:127)
+  - `csolver` - CSolver API (solver.py:33)
+  - `capmonster` - CapMonster Cloud (solver.py:124)
+  
+  Service mapping defined in index.py:119-125.
+  
+  **Example:**
+  ```json
+  "service": "razorcap"
+  ```
+</ParamField>
+
+<ParamField path="captcha.apikey" type="string" required>
+  API key for the selected captcha solving service.
+  
+  - Required for all captcha services
+  - Used in solver.py:13 as `api_key`
+  - Different services require different API keys
+  
+  **Example:**
+  ```json
+  "apikey": "3e5fc347-dfd8-4b12-9ca3-e57f931c5fbc"
+  ```
+</ParamField>
+
+<ParamField path="captcha.proxyless" type="boolean" default="false" required>
+  Whether to solve captchas without proxies.
+  
+  - When `true`: Solves captchas directly without proxy (solver.py:22-23)
+  - When `false`: Uses proxies from `input/proxies.txt` for captcha solving (solver.py:18-20)
+  - Independent from the top-level `proxyless` setting
+  
+  **Example:**
+  ```json
+  "proxyless": false
+  ```
+</ParamField>
+
+## Complete Example Configuration
+
+```json
+{
+    "threads": 10,
+    "proxyless": true,
+    "max_joins": 100,
+    "delay": 1,
+    "captcha": {
+        "solve_captcha": true,
+        "service": "razorcap",
+        "apikey": "3e5fc347-dfd8-4b12-9ca3-e57f931c5fbc",
+        "proxyless": false
+    }
+}
+```
+
+## Browser Configuration Variables
+
+These variables are defined in index.py and used for browser fingerprinting:
+
+<ParamField path="chrome_version" type="integer" default="133" readonly>
+  Chrome version used for user agent and sec-ch-ua headers.
+  
+  Defined in index.py:27:
+  ```python
+  chrome_version = 133
+  ```
+</ParamField>
+
+<ParamField path="sec_ch_ua" type="string" readonly>
+  Chrome user agent client hints header value.
+  
+  Defined in index.py:28:
+  ```python
+  sec_ch_ua = f'"Google Chrome";v="{chrome_version}", "Chromium";v="{chrome_version}", "Not;A=Brand";v="8"'
+  ```
+  
+  **Value:**
+  ```
+  "Google Chrome";v="133", "Chromium";v="133", "Not;A=Brand";v="8"
+  ```
+</ParamField>
+
+<ParamField path="user_agent" type="string" readonly>
+  User-Agent string for HTTP requests.
+  
+  Defined in index.py:29:
+  ```python
+  user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version}.0.0.0 Safari/537.36'
+  ```
+  
+  **Value:**
+  ```
+  Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36
+  ```
+</ParamField>
+
+## Related Configuration Files
+
+### Input Files
+
+- `input/tokens.txt` - Discord tokens to use (one per line)
+- `input/invites.txt` - Discord invite codes (one per line)
+- `input/proxies.txt` - HTTP proxies (required when `proxyless: false`)
+
+### Output Files
+
+- `output/joined.txt` - Successfully joined tokens (index.py:147)
+- `output/invalid.txt` - Invalid/unauthorized tokens (index.py:153)
+- `output/locked.txt` - Locked tokens (index.py:160)
+- `output/captcha.txt` - Tokens that encountered captcha (index.py:191)
+- `output/failed_token.txt` - Failed due to token issues (index.py:167)
+- `output/failed_captcha.txt` - Failed due to captcha solver issues (index.py:173)
+- `output/failed.txt` - Other failures (index.py:178)
+- `output/filled_tokens.txt` - Tokens that reached max_joins limit (index.py:270)
+
+## Notes
+
+- Configuration is loaded using `json.loads()` and unpacked into `JoinerConfig` dataclass (index.py:243)
+- Missing required fields will cause the application to fail at startup
+- Invalid JSON syntax will prevent the configuration from loading
+- Thread count is automatically limited by available tokens (index.py:249)
+- Max joins is automatically limited by available invites (index.py:248)

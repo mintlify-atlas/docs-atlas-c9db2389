@@ -1,0 +1,458 @@
+---
+title: 'Captcha Configuration'
+description: 'Configure captcha solvers to handle Discord hCaptcha challenges'
+icon: 'shield-check'
+---
+
+Discord uses hCaptcha Enterprise to protect against automation. Filly integrates with multiple captcha solving services to automatically solve these challenges.
+
+## Configuration
+
+Captcha settings are configured in the `captcha` section of `input/config.json`:
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "razorcap",
+    "apikey": "3e5fc347-dfd8-4b12-9ca3-e57f931c5fbc",
+    "proxyless": false
+  }
+}
+```
+
+## Configuration Options
+
+<ParamField path="solve_captcha" type="boolean" required default="true">
+  Enable or disable automatic captcha solving.
+  
+  - `true`: Automatically solve captchas when detected
+  - `false`: Skip captcha solving (joins will fail if captcha appears)
+</ParamField>
+
+<ParamField path="service" type="string" required>
+  Captcha solving service to use. Supported services:
+  
+  - `razorcap` - RazorCap API (recommended)
+  - `aisolver` - AISolver service
+  - `hcoptcha` - hCoptcha API
+  - `csolver` - CSolver service
+  - `capmonster` - CapMonster Cloud
+  
+  <Warning>
+  Service name is case-sensitive and must match exactly.
+  </Warning>
+</ParamField>
+
+<ParamField path="apikey" type="string" required>
+  API key from your captcha solving service. Each service provides a unique API key when you create an account.
+  
+  **Example**: `3e5fc347-dfd8-4b12-9ca3-e57f931c5fbc`
+</ParamField>
+
+<ParamField path="proxyless" type="boolean" default="false">
+  Whether the captcha solver should use proxies.
+  
+  - `true`: Solve captchas without proxies (faster but may have lower success rate)
+  - `false`: Use proxies from `input/proxies.txt` (better for avoiding detection)
+  
+  <Note>
+  This setting is independent from the main `proxyless` setting. You can use proxies for joins but not captcha solving, or vice versa.
+  </Note>
+</ParamField>
+
+## Supported Services
+
+### RazorCap (Recommended)
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "razorcap",
+    "apikey": "your-razorcap-api-key",
+    "proxyless": false
+  }
+}
+```
+
+**Features**:
+- hCaptcha Enterprise support
+- Fast solving times (30-60 seconds)
+- RQ data support for Discord
+- Proxy support
+- Polling-based result retrieval
+
+**API Details**:
+- Create task: `POST https://api.razorcap.xyz/create_task`
+- Get result: `GET https://api.razorcap.xyz/get_result/{task_id}`
+- Timeout: 120 seconds
+
+### AISolver
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "aisolver",
+    "apikey": "your-aisolver-api-key",
+    "proxyless": false
+  }
+}
+```
+
+**Features**:
+- Discord-specific optimization
+- Proxy required for best results
+- RQ data support
+
+### hCoptcha
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "hcoptcha",
+    "apikey": "your-hcoptcha-api-key",
+    "proxyless": false
+  }
+}
+```
+
+**Features**:
+- hCaptcha Enterprise support
+- User agent customization
+- Proxy rotation support
+
+**API Details**:
+- Create task: `POST https://api.hcoptcha.com/api/createTask`
+- Get result: `POST https://api.hcoptcha.com/api/getTaskData`
+
+### CSolver
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "csolver",
+    "apikey": "71144850f4fb4cc55fc0ee6935badddf",
+    "proxyless": true
+  }
+}
+```
+
+**Features**:
+- Fast response times
+- Simple API
+- RQ data support
+
+**API Details**:
+- Endpoint: `POST https://api.csolver.xyz/solve`
+- Single request (no polling)
+
+### CapMonster Cloud
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "capmonster",
+    "apikey": "your-capmonster-api-key",
+    "proxyless": false
+  }
+}
+```
+
+**Features**:
+- HCaptchaTaskProxyless support
+- User agent customization
+- Reliable service
+
+**API Details**:
+- Create task: `POST https://api.capmonster.cloud/createTask`
+- Get result: `POST https://api.capmonster.cloud/getTaskResult`
+
+## How Captcha Solving Works
+
+<Steps>
+  <Step title="Captcha detection">
+    When joining a server, Discord may return a captcha challenge:
+    
+    ```json
+    {
+      "captcha_sitekey": "a9b5fb07-92ff-493f-86fe-352a2803b3df",
+      "captcha_rqdata": "...",
+      "captcha_rqtoken": "..."
+    }
+    ```
+  </Step>
+  
+  <Step title="Send to solver">
+    The tool sends the captcha data to your configured service:
+    
+    ```python
+    solution = self._handle_captcha(
+        response.json()['captcha_rqdata'],
+        response.json()['captcha_rqtoken']
+    )
+    ```
+  </Step>
+  
+  <Step title="Wait for solution">
+    The solver processes the captcha (typically 30-90 seconds):
+    
+    ```
+    [!] Captcha Detected | Token: MTIzNDU2.*****
+    [✓] Captcha Solved Successfully
+    ```
+  </Step>
+  
+  <Step title="Retry with solution">
+    The tool retries the join with the captcha solution:
+    
+    ```python
+    self.client.headers.update({
+        "authorization": token_only,
+        "x-captcha-key": solution,
+        "x-captcha-rqtoken": response.json()['captcha_rqtoken']
+    })
+    response = self.client.post(
+        f"https://discord.com/api/v9/invites/{invite}",
+        json={}
+    )
+    ```
+  </Step>
+</Steps>
+
+## Discord Captcha Details
+
+### Site Configuration
+
+```python
+url = "https://discord.com/channels/@me"
+sitekey = "a9b5fb07-92ff-493f-86fe-352a2803b3df"
+user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'
+```
+
+<ParamField path="sitekey" type="string">
+  Discord's hCaptcha site key: `a9b5fb07-92ff-493f-86fe-352a2803b3df`
+  
+  This is constant for all Discord captchas.
+</ParamField>
+
+<ParamField path="rqdata" type="string">
+  Request-specific data from Discord's captcha challenge. Unique for each captcha.
+</ParamField>
+
+<ParamField path="rqtoken" type="string">
+  Request token from Discord. Must be sent back with the solution.
+</ParamField>
+
+### Captcha Headers
+
+When submitting a captcha solution:
+
+```python
+{
+  "authorization": "token_here",
+  "x-captcha-key": "P1_eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "x-captcha-rqtoken": "rqtoken_from_discord"
+}
+```
+
+## Response Handling
+
+### Success
+
+```python
+if solution:
+    self.stats.captcha_solved += 1
+    NovaLogger.win("Captcha Solved Successfully")
+```
+
+Token saved to `output/joined.txt` if join succeeds.
+
+### Failure
+
+If captcha solving fails:
+
+```python
+if "captcha_key" in response.text:
+    NovaLogger.fail("Failed Due To Solver Issue", 
+                    token=masked_token, 
+                    error=response.json()['captcha_key'])
+    self._append_to_file("failed_captcha.txt", token)
+```
+
+Token saved to `output/failed_captcha.txt`.
+
+## Statistics
+
+Captcha statistics are displayed in real-time:
+
+```
+Filly | Total: 50 | Joined: 120 | Failed: 5 | Captcha: 15 (12 solved) | Invalid: 1 | Locked: 0
+```
+
+- **Captcha**: Total captchas encountered
+- **Solved**: Successfully solved captchas
+
+## Proxy Configuration
+
+When `captcha.proxyless` is `false`, proxies are randomly selected:
+
+```python
+if not config["captcha"]["proxyless"]:
+    proxy = random.choice(proxies).strip()
+    proxies = f"http://{proxy}"
+else:
+    proxies = None
+```
+
+<Info>
+Captcha solvers have their own proxy update mechanism:
+
+```python
+def update_proxy(self):
+    if not config["captcha"]["proxyless"]:
+        proxy = random.choice(proxies).strip()
+        proxies = {f"http://{proxy}"}
+        return proxies
+```
+</Info>
+
+## Best Practices
+
+<Tip>
+**Captcha solving recommendations**:
+
+- Use RazorCap or hCoptcha for best Discord compatibility
+- Enable proxy support for better success rates
+- Monitor your API balance to avoid service interruptions
+- Test with a few tokens before running large batches
+- Keep API keys secure and never commit to Git
+</Tip>
+
+<Warning>
+**Common issues to avoid**:
+
+- Using free captcha solvers (unreliable)
+- Running out of API credits mid-operation
+- Using proxyless mode (lower success rate)
+- Setting solve_captcha to false (joins will fail)
+- Wrong service name (case-sensitive)
+</Warning>
+
+## Cost Considerations
+
+### Pricing
+
+Captcha solving services typically charge per solve:
+
+- **RazorCap**: ~$2-3 per 1000 solves
+- **hCoptcha**: ~$2-4 per 1000 solves
+- **CapMonster**: ~$1-3 per 1000 solves
+- **CSolver**: ~$1-2 per 1000 solves
+
+<Note>
+Prices vary by service and account type. Check with your provider for current rates.
+</Note>
+
+### Optimization
+
+Reduce captcha costs:
+
+1. Use good quality proxies (reduces captcha rate)
+2. Add delays between requests
+3. Use fewer concurrent threads
+4. Use residential proxies instead of datacenter
+5. Rotate session IDs frequently
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Captchas not being solved">
+    **Common causes**:
+    - `solve_captcha` is set to `false`
+    - Invalid API key
+    - Service name misspelled
+    - API balance depleted
+    - Service is down
+    
+    **Solutions**:
+    - Set `"solve_captcha": true` in config.json
+    - Verify API key is correct
+    - Check service name matches exactly
+    - Check API balance with provider
+    - Try different service
+  </Accordion>
+  
+  <Accordion title="All captcha solutions failing">
+    **Common causes**:
+    - Wrong sitekey
+    - RQ data expired
+    - Proxy issues
+    - Service returning bad solutions
+    
+    **Solutions**:
+    - Verify sitekey is `a9b5fb07-92ff-493f-86fe-352a2803b3df`
+    - Reduce delay (captcha data expires)
+    - Try `"proxyless": true` for captcha
+    - Contact solver service support
+    - Switch to different service
+  </Accordion>
+  
+  <Accordion title="Captcha solving too slow">
+    **Common causes**:
+    - Service overloaded
+    - Complex captcha challenges
+    - Network latency
+    - Proxy slowing down requests
+    
+    **Solutions**:
+    - Try different service (RazorCap is fastest)
+    - Use `"proxyless": true` for captcha
+    - Check network connection
+    - Upgrade to premium service tier
+  </Accordion>
+  
+  <Accordion title="Getting charged but no solutions">
+    **Common causes**:
+    - Service charging for attempts, not successes
+    - Wrong task type being created
+    - API misconfiguration
+    
+    **Solutions**:
+    - Review service billing policy
+    - Check service dashboard for task details
+    - Verify configuration matches service docs
+    - Contact service support with task IDs
+  </Accordion>
+  
+  <Accordion title="Service returns 'Invalid sitekey'">
+    **Common causes**:
+    - Service doesn't support Discord's sitekey
+    - Service not configured for hCaptcha Enterprise
+    - API endpoint changed
+    
+    **Solutions**:
+    - Use RazorCap, hCoptcha, or CSolver (tested with Discord)
+    - Contact service to enable Enterprise support
+    - Check service documentation for updates
+    - Try alternative service
+  </Accordion>
+</AccordionGroup>
+
+## Service Comparison
+
+| Service | Speed | Success Rate | Price | Proxy Support | Recommended |
+|---------|-------|--------------|-------|---------------|-------------|
+| RazorCap | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $$ | ✅ | ✅ Best overall |
+| hCoptcha | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $$$ | ✅ | ✅ High success |
+| CSolver | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | $ | ❌ | ✅ Budget option |
+| AISolver | ⭐⭐⭐ | ⭐⭐⭐⭐ | $$ | ✅ | ⚠️ Requires proxy |
+| CapMonster | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | $$ | ✅ | ✅ Reliable |
+
+<Info>
+All services support Discord's hCaptcha Enterprise. Choose based on your budget and requirements.
+</Info>

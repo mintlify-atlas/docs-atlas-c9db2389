@@ -1,0 +1,368 @@
+---
+title: 'Invite Configuration'
+description: 'How to add Discord server invite links in input/invites.txt'
+icon: 'envelope'
+---
+
+Discord server invites are stored in `input/invites.txt`. The tool will join each token to each invite in the list, up to the `max_joins` limit.
+
+## Invite Format
+
+Filly supports multiple invite formats. Add one invite per line in `input/invites.txt`.
+
+### Supported Formats
+
+<Tabs>
+  <Tab title="Invite code only">
+    Just the invite code (recommended):
+    
+    ```txt
+    abc123xyz
+    example
+    test123
+    ```
+    
+    <Info>
+    This is the cleanest and recommended format.
+    </Info>
+  </Tab>
+  
+  <Tab title="discord.gg URL">
+    Full discord.gg URL:
+    
+    ```txt
+    discord.gg/abc123xyz
+    discord.gg/example
+    discord.gg/test123
+    ```
+  </Tab>
+  
+  <Tab title="Full HTTPS URL">
+    Complete HTTPS URL:
+    
+    ```txt
+    https://discord.gg/abc123xyz
+    https://discord.gg/example
+    https://discord.gg/test123
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+The tool automatically extracts the invite code from any format. All three formats work identically.
+</Note>
+
+## Invite Extraction
+
+The tool uses the Discord API endpoint with the invite code:
+
+```python
+response = self.session.post(
+    f"https://discord.com/api/v9/invites/{invite}",
+    json={}
+)
+```
+
+If you provide a full URL like `https://discord.gg/abc123xyz`, only the code portion (`abc123xyz`) should be extracted before use.
+
+## How Invites Work
+
+### Join Process
+
+<Steps>
+  <Step title="Load invites">
+    The tool loads all invites from `input/invites.txt` and removes duplicates:
+    
+    ```python
+    invites = list(set(Path('input/invites.txt').read_text().splitlines()))
+    ```
+  </Step>
+  
+  <Step title="Limit invites">
+    Only process up to `max_joins` invites:
+    
+    ```python
+    max_joins = min(config.max_joins, len(invites))
+    ```
+  </Step>
+  
+  <Step title="Join each invite">
+    For each invite, attempt to join with each token:
+    
+    ```python
+    for invite in invites[:max_joins]:
+        for token in token_manager.tokens:
+            joiner.join_server(token.strip(), invite)
+    ```
+  </Step>
+</Steps>
+
+### Join Behavior
+
+- Each token joins each invite sequentially
+- If a token reaches `max_joins`, it's saved to `output/filled_tokens.txt`
+- If any token becomes invalid or locked, the process stops for that token
+- Invites are processed in the order they appear in the file
+
+## Invite Limits
+
+### Discord Limits
+
+<Warning>
+Discord has strict limits on invite usage:
+
+- **Rate limits**: Too many joins from the same IP will trigger rate limiting
+- **Invite expiration**: Some invites expire after a certain time or number of uses
+- **Server limits**: Servers can limit who can join based on verification level
+- **Account age**: New accounts may have restrictions on joining servers
+</Warning>
+
+### Tool Limits
+
+Control how many invites are processed using `max_joins` in `config.json`:
+
+```json
+{
+  "max_joins": 100
+}
+```
+
+This limits:
+- Number of invites processed: `min(max_joins, total_invites)`
+- Number of joins per token: tracked and limited to `max_joins`
+
+## Example Configuration
+
+### Basic Setup
+
+```txt input/invites.txt
+abc123xyz
+example
+test123
+server1
+server2
+```
+
+### With URLs
+
+```txt input/invites.txt
+https://discord.gg/abc123xyz
+discord.gg/example
+test123
+https://discord.gg/server1
+server2
+```
+
+### Mixed Format
+
+```txt input/invites.txt
+abc123xyz
+https://discord.gg/example
+discord.gg/test123
+server1
+https://discord.gg/server2
+```
+
+<Info>
+All formats can be mixed in the same file. Duplicates are automatically removed.
+</Info>
+
+## Processing Order
+
+### Single Invite Example
+
+With 3 tokens and 1 invite:
+
+```
+Invite: abc123
+├── Token 1 joins abc123
+├── Token 2 joins abc123
+└── Token 3 joins abc123
+```
+
+### Multiple Invites Example
+
+With 3 tokens and 3 invites:
+
+```
+Invite: abc123
+├── Token 1 joins abc123
+├── Token 2 joins abc123
+└── Token 3 joins abc123
+
+Invite: example
+├── Token 1 joins example (join count: 2)
+├── Token 2 joins example (join count: 2)
+└── Token 3 joins example (join count: 2)
+
+Invite: test123
+├── Token 1 joins test123 (join count: 3)
+├── Token 2 joins test123 (join count: 3)
+└── Token 3 joins test123 (join count: 3)
+```
+
+### Max Joins Example
+
+With `max_joins: 2` in config.json:
+
+```
+Invite: abc123
+├── Token 1 joins abc123 (join count: 1)
+├── Token 2 joins abc123 (join count: 1)
+└── Token 3 joins abc123 (join count: 1)
+
+Invite: example
+├── Token 1 joins example (join count: 2) → Saved to filled_tokens.txt
+├── Token 2 joins example (join count: 2) → Saved to filled_tokens.txt
+└── Token 3 joins example (join count: 2) → Saved to filled_tokens.txt
+
+Invite: test123
+└── Skipped (all tokens reached max_joins)
+```
+
+## Response Handling
+
+The tool handles various responses when joining invites:
+
+### Success Responses
+
+<ResponseField name="200 OK" type="success">
+  Successfully joined the server. Token saved to `output/joined.txt`.
+  
+  ```
+  [✓] Successfully Joined Server | Token: MTIzNDU2.***** | Thread: 1
+  ```
+</ResponseField>
+
+### Error Responses
+
+<ResponseField name="401 Unauthorized" type="error">
+  Invalid token. Removed from `input/tokens.txt` and saved to `output/invalid.txt`.
+  
+  ```
+  [✗] Invalid Token | Token: MTIzNDU2.***** | Thread: 1
+  ```
+</ResponseField>
+
+<ResponseField name="403 Forbidden" type="error">
+  Locked or banned token. Removed from `input/tokens.txt` and saved to `output/locked.txt`.
+  
+  ```
+  [✗] Locked Token | Token: MTIzNDU2.***** | Thread: 1
+  ```
+</ResponseField>
+
+<ResponseField name="429 Too Many Requests" type="error">
+  Rate limited. Token continues with next invite.
+  
+  ```
+  [✗] Rate Limited | Token: MTIzNDU2.***** | Thread: 1
+  ```
+</ResponseField>
+
+### Captcha Response
+
+If captcha is detected:
+
+```
+[!] Captcha Detected | Token: MTIzNDU2.*****
+```
+
+Token is saved to `output/captcha.txt` and captcha solving is attempted if enabled.
+
+## Best Practices
+
+<Tip>
+**Recommendations for successful joins**:
+
+- Test invites manually before adding them
+- Remove expired invites regularly
+- Use permanent or long-lasting invites
+- Spread joins across multiple invites
+- Monitor rate limits and adjust delays
+- Keep invite list under 100 for better control
+</Tip>
+
+<Warning>
+**Avoid these common mistakes**:
+
+- Using expired invite codes
+- Adding the same invite multiple times (duplicates are removed anyway)
+- Using invites from servers that ban bots
+- Joining too many servers too quickly
+- Using invites from servers with high verification requirements
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="All invites failing with 404">
+    **Common causes**:
+    - Invite codes are expired
+    - Invite codes are invalid or mistyped
+    - Server deleted the invite
+    - Invite was single-use and already consumed
+    
+    **Solutions**:
+    - Verify invite codes are valid
+    - Test invites manually in Discord
+    - Request fresh invites from server owners
+    - Use permanent invites (no expiration)
+  </Accordion>
+  
+  <Accordion title="Tokens getting rate limited">
+    **Common causes**:
+    - Too many joins too quickly
+    - Multiple tokens from same IP
+    - Discord detected automation pattern
+    
+    **Solutions**:
+    - Increase delay in `config.json`
+    - Use proxies to distribute requests
+    - Reduce number of concurrent threads
+    - Spread joins over longer time period
+  </Accordion>
+  
+  <Accordion title="Some invites work, others don't">
+    **Common causes**:
+    - Server verification requirements vary
+    - Some servers have bot protection
+    - Account age or phone verification required
+    - Server member limits reached
+    
+    **Solutions**:
+    - Check server verification settings
+    - Use aged accounts with verified emails
+    - Avoid servers with strict verification
+    - Monitor which invites consistently fail
+  </Accordion>
+  
+  <Accordion title="No invites being processed">
+    **Common causes**:
+    - Empty `input/invites.txt` file
+    - All lines are blank or whitespace
+    - File encoding issues
+    - `max_joins` set to 0
+    
+    **Solutions**:
+    - Check file has content: `cat input/invites.txt`
+    - Verify file encoding is UTF-8
+    - Ensure `max_joins > 0` in config
+    - Remove blank lines from file
+  </Accordion>
+</AccordionGroup>
+
+## Statistics
+
+The tool displays real-time statistics in the console title:
+
+```
+Filly | Total: 50 | Joined: 120 | Failed: 5 | Captcha: 3 (2 solved) | Invalid: 1 | Locked: 0
+```
+
+- **Total**: Total number of invites loaded
+- **Joined**: Successful joins across all tokens
+- **Failed**: Failed join attempts
+- **Captcha**: Captcha challenges encountered (solved count)
+- **Invalid**: Invalid tokens detected
+- **Locked**: Locked tokens detected

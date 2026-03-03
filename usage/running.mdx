@@ -1,0 +1,120 @@
+---
+title: 'Running the Tool'
+description: 'Learn how to execute Filly Discord Token Filler and understand the command execution process'
+icon: 'play'
+---
+
+## Basic Execution
+
+Filly Discord Token Filler is executed using Python. The tool requires Python 3.7+ and all dependencies installed.
+
+### Command
+
+```bash
+python index.py
+```
+
+This command starts the joining process with the configuration specified in `input/config.json`.
+
+## What Happens When You Run
+
+When you execute the tool, the following sequence occurs:
+
+1. **Banner Display** - The Filly ASCII art banner appears with branding
+2. **Configuration Loading** - Loads settings from `input/config.json`
+3. **File Loading** - Reads tokens and invites from input files
+4. **Title Updates** - Console title shows real-time statistics
+5. **Joining Process** - Begins multi-threaded server joining
+6. **Statistics Display** - Shows final results when complete
+
+## Console Output
+
+The tool uses a sophisticated logging system with colored output and symbols:
+
+### Log Symbols
+
+- `[✓]` - Success (green) - Token successfully joined server
+- `[⨯]` - Failure (red) - Join attempt failed
+- `[△]` - Alert (yellow) - Captcha detected or warning
+- `[◈]` - Note (cyan) - Informational message
+- `[▷]` - Event (magenta) - Process event
+- `[◎]` - Trace (white) - Debug information (debug mode only)
+
+### Example Terminal Output
+
+```plaintext
+                        █████▒██▓ ██▓     ██▓   ▓██   ██▓
+                        ▓██   ▒▓██▒▓██▒    ▓██▒    ▒██  ██▒
+                        ▒████ ░▒██▒▒██░    ▒██░     ▒██ ██░
+                        ░▓█▒  ░░██░▒██░    ▒██░     ░ ▐██▓░
+                        ░▒█░   ░██░░██████▒░██████▒ ░ ██▒▓░
+                        ▒ ░   ░▓  ░ ▒░▓  ░░ ▒░▓  ░  ██▒▒▒ 
+                        ░      ▒ ░░ ░ ▒  ░░ ░ ▒  ░▓██ ░▒░ 
+                        ░ ░    ▒ ░  ░ ░     ░ ░   ▒ ▒ ░░  
+                                ░      ░  ░    ░  ░░ ░     
+                                                ░ ░     
+
+                        https://discord.gg/api
+
+[12:34:56] [✓] Successfully Joined Server ▸ token=MTE1.**** thread=1
+[12:34:57] [△] Captcha Detected ▸ token=MTE2.****
+[12:34:58] [✓] Captcha Solved Successfully
+[12:34:59] [✓] Successfully Joined Server ▸ token=MTE2.**** thread=2
+[12:35:00] [⨯] Invalid Token ▸ token=MTE3.**** thread=3
+[12:35:01] [⨯] Locked Token ▸ token=MTE4.**** thread=4
+[12:35:02] [◈] Sleeping for 5 seconds
+```
+
+### Log Format
+
+Each log entry follows this format:
+
+```plaintext
+[HH:MM:SS] [SYMBOL] Message ▸ key=value key=value
+```
+
+- **Timestamp** - Current time in `HH:MM:SS` format
+- **Symbol** - Visual indicator of log level
+- **Message** - Descriptive text about the action
+- **Context** - Additional key=value pairs (token, thread, error, etc.)
+
+## Console Title
+
+The console window title updates in real-time to show current statistics:
+
+```plaintext
+Filly | Total: 50 | Joined: 23 | Failed: 2 | Captcha: 5 (3 solved) | Invalid: 1 | Locked: 0
+```
+
+This title updates approximately every 100ms during execution (from `index.py:223-239`).
+
+## Thread Safety
+
+The tool uses multi-threading with thread-safe logging:
+
+- All console output is synchronized using a threading lock
+- Each log message includes the thread number for tracking
+- Multiple tokens can join simultaneously based on configured threads
+
+<Accordion title="Why are some tokens masked in the output?">
+  For security purposes, tokens are masked showing only the first segment before the first dot, followed by asterisks. The format is `{token_only.split('.')[0]}.*****` (from `index.py:184`).
+</Accordion>
+
+<Accordion title="Can I run multiple instances simultaneously?">
+  Yes, but be careful with rate limits. Each instance uses the same output files, so results will be combined. Consider using separate directories for different runs.
+</Accordion>
+
+<Accordion title="What happens if I press Ctrl+C during execution?">
+  The tool will attempt to gracefully shut down, saving all output files and displaying partial statistics. The title update thread is configured as a daemon thread to prevent hanging.
+</Accordion>
+
+## Exit Process
+
+When the tool completes:
+
+1. Statistics are calculated and displayed
+2. "Press Enter to exit..." prompt appears
+3. After pressing Enter, countdown shows "Exiting in 3 seconds..."
+4. Tool closes after 3 seconds
+
+This gives you time to review the final statistics before the window closes.

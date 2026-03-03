@@ -1,0 +1,261 @@
+---
+title: Captcha Solvers
+description: Complete reference for all supported captcha solving services
+---
+
+Filly supports 5 different captcha solving services to handle Discord's hCaptcha Enterprise challenges. Each solver implements a task-based polling system with automatic retry logic.
+
+## Solver Class Overview
+
+The `Solver` class (`data/solver.py:25`) provides methods for each captcha service. All solvers follow a two-step process:
+1. Create a captcha solving task
+2. Poll for the solution until solved or timeout
+
+### Configuration
+
+Solvers are configured in `input/config.json`:
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "razorcap",
+    "apikey": "your-api-key-here",
+    "proxyless": false
+  }
+}
+```
+
+## Supported Solvers
+
+### 1. RazorCap
+
+**Method:** `razorcap(rqdata, timeout=120)`  
+**Location:** `data/solver.py:55-89`
+
+RazorCap is a premium hCaptcha Enterprise solver with support for Discord's `rqdata` parameter.
+
+```python
+def razorcap(self, rqdata, timeout=120):
+    payload = {
+        'key': api_key,
+        'type': 'hcaptcha_enterprise',
+        'data': {
+            'sitekey': sitekey,
+            'siteurl': "discord.com",
+            'proxy': proxies,
+            'rqdata': rqdata
+        }
+    }
+```
+
+**Process:**
+1. Create task: `POST https://api.razorcap.xyz/create_task`
+2. Poll result: `GET https://api.razorcap.xyz/get_result/{task_id}`
+3. Poll interval: 1 second
+4. Default timeout: 120 seconds
+
+**Response States:**
+- `"solved"` - Returns `response_key`
+- `"solving"` - Continues polling
+- Timeout - Returns `None`
+
+<Warning>
+  RazorCap requires a valid proxy unless `proxyless: true` is set in config. Invalid proxies will cause task creation to fail.
+</Warning>
+
+### 2. CSolver
+
+**Method:** `csolver(rqdata=str)`  
+**Location:** `data/solver.py:33-53`
+
+CSolver provides instant captcha solving without polling.
+
+```python
+def csolver(self, rqdata=str):
+    endpoint = "https://api.csolver.xyz/solve"
+    headers = {'API-Key': "71144850f4fb4cc55fc0ee6935badddf"}
+    
+    payload = {
+        'sitekey': sitekey,
+        'site': "discord.com",
+        'rqdata': rqdata
+    }
+```
+
+**Process:**
+1. Single request: `POST https://api.csolver.xyz/solve`
+2. Returns solution immediately or `None`
+
+**Response:**
+- Status 200: Returns `solution` field
+- Other status: Returns `None`
+
+<Note>
+  CSolver is the fastest solver as it returns results immediately without polling.
+</Note>
+
+### 3. HCoptcha
+
+**Method:** `hcoptcha(rqdata=str)`  
+**Location:** `data/solver.py:127-164`
+
+HCoptcha is an hCaptcha Enterprise specialized solver.
+
+```python
+def hcoptcha(self, rqdata=str):
+    payload = {
+        "task_type": "hcaptchaEnterprise",
+        "api_key": api_key,
+        "data": {
+            "sitekey": sitekey,
+            "url": url,
+            "userAgent": user_agent,
+            "proxy": self.update_proxy(),
+            "rqdata": rqdata
+        }
+    }
+```
+
+**Process:**
+1. Create task: `POST https://api.hcoptcha.com/api/createTask`
+2. Poll result: `POST https://api.hcoptcha.com/api/getTaskData`
+3. Poll interval: 1 second
+4. No timeout (infinite polling)
+
+**Response States:**
+- `state: "completed"` - Returns `captcha_key`
+- `state: "error"` - Returns `None`
+- Exception - Returns `None`
+
+<Warning>
+  HCoptcha has no timeout limit and will poll indefinitely. Monitor your API usage to avoid unnecessary costs.
+</Warning>
+
+### 4. CapSolver
+
+**Method:** `capsolver()`  
+**Location:** `data/solver.py:166-201`
+
+CapSolver uses Discord-specific App ID for enhanced success rates.
+
+```python
+def capsolver(self):
+    payload = {
+        "clientKey": api_key,
+        "appid": "D802050C-BD9A-49D7-A73C-CE473E22B569",
+        "task": {
+            "type": "HCaptchaTaskProxyless",
+            "websiteURL": url,
+            "websiteKey": sitekey,
+            "isInvisible": True,
+            "userAgent": user_agent,
+            "AppId": "D802050C-BD9A-49D7-A73C-CE473E22B569"
+        }
+    }
+```
+
+**Process:**
+1. Create task: `POST https://api.capsolver.com/createTask`
+2. Poll result: `POST https://api.capsolver.com/getTaskResult`
+3. Poll interval: 1 second
+4. No timeout (infinite polling)
+
+**Response States:**
+- `"ready"` in response - Returns `gRecaptchaResponse`
+- `"processing"` in response - Continues polling
+- Exception - Returns `None`
+
+<Note>
+  CapSolver uses the Discord App ID `D802050C-BD9A-49D7-A73C-CE473E22B569` for optimized hCaptcha Enterprise solving.
+</Note>
+
+### 5. CapMonster
+
+**Method:** `capmonster()`  
+**Location:** `data/solver.py:203-239`
+
+CapMonster Cloud provides proxyless hCaptcha solving.
+
+```python
+def capmonster(self):
+    payload = {
+        "clientKey": api_key,
+        "task": {
+            "type": "HCaptchaTaskProxyless",
+            "websiteURL": url,
+            "websiteKey": sitekey,
+            "userAgent": user_agent
+        }
+    }
+```
+
+**Process:**
+1. Create task: `POST https://api.capmonster.cloud/createTask`
+2. Poll result: `POST https://api.capmonster.cloud/getTaskResult`
+3. Poll interval: 1 second
+4. No timeout (infinite polling)
+
+**Response States:**
+- `status: "ready"` - Returns `gRecaptchaResponse`
+- `status: "processing"` - Continues polling
+- Other status - Returns `None`
+
+## Proxy Management
+
+The `update_proxy()` method (`data/solver.py:26-31`) randomly selects a proxy from `input/proxies.txt`:
+
+```python
+def update_proxy(self):
+    global proxies
+    if not config["captcha"]["proxyless"]:
+        proxy = random.choice(proxies).strip()
+        proxies = {f"http://{proxy}"}
+        return proxies
+```
+
+## Solver Integration
+
+Solvers are invoked when Discord returns a captcha challenge (`index.py:117-132`):
+
+```python
+def _handle_captcha(self, rqdata: str, rqtoken: str) -> Optional[str]:
+    solver = Solver()
+    solver_map = {
+        "razorcap": lambda: solver.razorcap(rqdata=rqdata),
+        "aisolver": lambda: solver.aisolver2(proxy=self.proxy, rqdata=rqdata),
+        "hcoptcha": lambda: solver.hcoptcha(rqdata),
+        "csolver": lambda: solver.csolver(rqdata),
+        "capmonster": lambda: solver.capmonster(rqdata)
+    }
+    if solver_func := solver_map.get(self.config.captcha["service"]):
+        solution = solver_func()
+        if solution:
+            self.stats.captcha_solved += 1
+            NovaLogger.win("Captcha Solved Successfully")
+        return solution
+    return None
+```
+
+## Discord Constants
+
+All solvers use these Discord-specific values (`data/solver.py:14-16`):
+
+```python
+url = "https://discord.com/channels/@me"
+sitekey = "a9b5fb07-92ff-493f-86fe-352a2803b3df"
+user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'
+```
+
+## Choosing a Solver
+
+| Solver | Speed | Timeout | Proxy Support | Best For |
+|--------|-------|---------|---------------|----------|
+| CSolver | Fastest | None (instant) | No | Quick testing |
+| RazorCap | Fast | 120s | Yes | Production use |
+| HCoptcha | Medium | Infinite | Yes | Enterprise features |
+| CapSolver | Medium | Infinite | Proxyless | Discord-optimized |
+| CapMonster | Medium | Infinite | Proxyless | Cloud-based |
+
+<Tip>
+  For production use, RazorCap with a 120-second timeout provides the best balance of speed and reliability.
+</Tip>

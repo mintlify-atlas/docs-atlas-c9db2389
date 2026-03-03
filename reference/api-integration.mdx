@@ -1,0 +1,642 @@
+---
+title: Discord API Integration
+description: Documentation of Discord API endpoints, headers, and request/response handling
+---
+
+This page documents how Filly Discord Token Filler integrates with the Discord API, including endpoints, headers, authentication, and response handling.
+
+## API Endpoints
+
+Filly uses the Discord v9 API for all operations.
+
+### Join Server Endpoint
+
+<ParamField path="POST /api/v9/invites/{invite}" type="endpoint">
+  Joins a Discord server using an invite code.
+  
+  **Location:** index.py:187
+  
+  **URL Format:**
+  ```
+  https://discord.com/api/v9/invites/{invite}
+  ```
+  
+  **Request Body:**
+  ```json
+  {}
+  ```
+  
+  **Headers Required:**
+  - `authorization` - Discord token
+  - All standard headers from `_setup_session()`
+  
+  **Example Request:**
+  ```python
+  self.session.headers["authorization"] = token_only
+  response = self.session.post(f"https://discord.com/api/v9/invites/{invite}", json={})
+  ```
+</ParamField>
+
+### Join Server with Captcha Solution
+
+<ParamField path="POST /api/v9/invites/{invite} (with captcha)" type="endpoint">
+  Joins a Discord server with captcha solution headers.
+  
+  **Location:** index.py:206-209
+  
+  **URL Format:**
+  ```
+  https://discord.com/api/v9/invites/{invite}
+  ```
+  
+  **Request Body:**
+  ```json
+  {}
+  ```
+  
+  **Additional Headers:**
+  - `authorization` - Discord token
+  - `x-captcha-key` - Captcha solution from solver
+  - `x-captcha-rqtoken` - Token from captcha challenge response
+  
+  **Example Request:**
+  ```python
+  self.client.headers.update({
+      "authorization": token_only,
+      "x-captcha-key": solution,
+      "x-captcha-rqtoken": response.json()['captcha_rqtoken']
+  })
+  response = self.client.post(
+      f"https://discord.com/api/v9/invites/{invite}",
+      json={},
+      proxy=None if self.config.proxyless else self.proxy
+  )
+  ```
+</ParamField>
+
+## HTTP Session Setup
+
+The `DiscordJoiner` class uses `curl_cffi` to impersonate Chrome and bypass bot detection.
+
+### Session Creation
+
+**Location:** index.py:76-80
+
+```python
+def _get_session(self):
+    try:
+        return request.Session(impersonate="chrome"), request.Session(impersonate="chrome")
+    except Exception:
+        return self._get_session()
+```
+
+- Creates two sessions: `self.session` and `self.client`
+- Both impersonate Chrome browser
+- Retry mechanism if session creation fails
+
+### Proxy Configuration
+
+**Location:** index.py:83-88
+
+```python
+if not self.config.proxyless:
+    proxies = Path('input/proxies.txt').read_text().splitlines()
+    self.proxy = f"http://{random.choice(proxies)}".replace(
+        'sessionid', str(random.randint(1327390889, 1399999999))
+    )
+    self.session.proxies = {"http": self.proxy, "https": self.proxy}
+```
+
+- Loads proxies from `input/proxies.txt`
+- Randomizes session ID in proxy URL
+- Applies to both HTTP and HTTPS
+
+## HTTP Headers
+
+All headers are configured in the `_setup_session()` method (index.py:90-108).
+
+### Complete Headers List
+
+<ParamField path="accept" type="string" default="*/*">
+  Accept header for all content types.
+  
+  **Value:**
+  ```
+  */*
+  ```
+</ParamField>
+
+<ParamField path="accept-language" type="string" default="en-US,en;q=0.9">
+  Language preferences for responses.
+  
+  **Value:**
+  ```
+  en-US,en;q=0.9
+  ```
+</ParamField>
+
+<ParamField path="content-type" type="string" default="application/json">
+  Content type for request bodies.
+  
+  **Value:**
+  ```
+  application/json
+  ```
+</ParamField>
+
+<ParamField path="origin" type="string" default="https://discord.com">
+  Origin header indicating request source.
+  
+  **Value:**
+  ```
+  https://discord.com
+  ```
+</ParamField>
+
+<ParamField path="priority" type="string" default="u=1, i">
+  Request priority hints.
+  
+  **Value:**
+  ```
+  u=1, i
+  ```
+</ParamField>
+
+<ParamField path="referer" type="string" default="https://discord.com/channels/@me/1338000752110600309">
+  Referrer URL indicating navigation source.
+  
+  **Value:**
+  ```
+  https://discord.com/channels/@me/1338000752110600309
+  ```
+</ParamField>
+
+<ParamField path="sec-ch-ua" type="string">
+  Chrome user agent client hints.
+  
+  **Location:** index.py:28, 97
+  
+  **Value:**
+  ```
+  "Google Chrome";v="133", "Chromium";v="133", "Not;A=Brand";v="8"
+  ```
+  
+  **Generated From:**
+  ```python
+  sec_ch_ua = f'"Google Chrome";v="{chrome_version}", "Chromium";v="{chrome_version}", "Not;A=Brand";v="8"'
+  ```
+</ParamField>
+
+<ParamField path="sec-ch-ua-mobile" type="string" default="?0">
+  Indicates not a mobile browser.
+  
+  **Value:**
+  ```
+  ?0
+  ```
+</ParamField>
+
+<ParamField path="sec-ch-ua-platform" type="string" default="Windows">
+  Operating system platform.
+  
+  **Value:**
+  ```
+  "Windows"
+  ```
+</ParamField>
+
+<ParamField path="sec-fetch-dest" type="string" default="empty">
+  Fetch destination type.
+  
+  **Value:**
+  ```
+  empty
+  ```
+</ParamField>
+
+<ParamField path="sec-fetch-mode" type="string" default="cors">
+  Fetch mode for CORS requests.
+  
+  **Value:**
+  ```
+  cors
+  ```
+</ParamField>
+
+<ParamField path="sec-fetch-site" type="string" default="same-origin">
+  Indicates same-origin request.
+  
+  **Value:**
+  ```
+  same-origin
+  ```
+</ParamField>
+
+<ParamField path="user-agent" type="string">
+  User-Agent string identifying the browser.
+  
+  **Location:** index.py:29, 103
+  
+  **Value:**
+  ```
+  Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36
+  ```
+  
+  **Generated From:**
+  ```python
+  user_agent = f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version}.0.0.0 Safari/537.36'
+  ```
+</ParamField>
+
+<ParamField path="x-debug-options" type="string" default="bugReporterEnabled">
+  Discord debug options.
+  
+  **Value:**
+  ```
+  bugReporterEnabled
+  ```
+</ParamField>
+
+<ParamField path="x-discord-locale" type="string" default="en-US">
+  Discord locale preference.
+  
+  **Value:**
+  ```
+  en-US
+  ```
+</ParamField>
+
+<ParamField path="x-discord-timezone" type="string" default="Asia/Calcutta">
+  Discord timezone setting.
+  
+  **Value:**
+  ```
+  Asia/Calcutta
+  ```
+</ParamField>
+
+<ParamField path="x-super-properties" type="string">
+  Base64-encoded browser fingerprint data.
+  
+  **Location:** index.py:107
+  
+  **Encoded Value:**
+  ```
+  eyJvcyI6IldpbmRvd3MiLCJicm93c2VyIjoiQ2hyb21lIiwiZGV2aWNlIjoiIiwic3lzdGVtX2xvY2FsZSI6ImVuLVVTIiwiaGFzX2NsaWVudF9tb2RzIjpmYWxzZSwiYnJvd3Nlcl91c2VyX2FnZW50IjoiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEzMy4wLjAuMCBTYWZhcmkvNTM3LjM2IiwiYnJvd3Nlcl92ZXJzaW9uIjoiMTMzLjAuMC4wIiwib3NfdmVyc2lvbiI6IjEwIiwicmVmZXJyZXIiOiIiLCJyZWZlcnJpbmdfZG9tYWluIjoiIiwicmVmZXJyZXJfY3VycmVudCI6IiIsInJlZmVycmluZ19kb21haW5fY3VycmVudCI6IiIsInJlbGVhc2VfY2hhbm5lbCI6InN0YWJsZSIsImNsaWVudF9idWlsZF9udW1iZXIiOjM2Njk1NSwiY2xpZW50X2V2ZW50X3NvdXJjZSI6bnVsbH0=
+  ```
+  
+  **Decoded JSON:**
+  ```json
+  {
+    "os": "Windows",
+    "browser": "Chrome",
+    "device": "",
+    "system_locale": "en-US",
+    "has_client_mods": false,
+    "browser_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "browser_version": "133.0.0.0",
+    "os_version": "10",
+    "referrer": "",
+    "referring_domain": "",
+    "referrer_current": "",
+    "referring_domain_current": "",
+    "release_channel": "stable",
+    "client_build_number": 366955,
+    "client_event_source": null
+  }
+  ```
+</ParamField>
+
+### Dynamic Headers
+
+<ParamField path="authorization" type="string">
+  Discord token for authentication.
+  
+  **Location:** index.py:186, 201
+  
+  **Set Before Each Request:**
+  ```python
+  self.session.headers["authorization"] = token_only
+  ```
+  
+  **Format:**
+  - Token only (not with email:password prefix)
+  - Extracted from token using `.split(":")[-1]`
+</ParamField>
+
+<ParamField path="x-captcha-key" type="string">
+  Captcha solution from solving service.
+  
+  **Location:** index.py:202
+  
+  **Set When Captcha Detected:**
+  ```python
+  self.client.headers.update({
+      "x-captcha-key": solution
+  })
+  ```
+</ParamField>
+
+<ParamField path="x-captcha-rqtoken" type="string">
+  Captcha request token from Discord challenge.
+  
+  **Location:** index.py:203
+  
+  **Set When Captcha Detected:**
+  ```python
+  self.client.headers.update({
+      "x-captcha-rqtoken": response.json()['captcha_rqtoken']
+  })
+  ```
+</ParamField>
+
+## Authentication
+
+### Token Format
+
+**Location:** index.py:183-184
+
+```python
+token_only = token.split(":")[-1]
+masked_token = f"{token_only.split('.')[0]}.*****"
+```
+
+- Tokens may be in `email:password:token` or `token` format
+- Only the token part (after last `:`) is used
+- Tokens are masked in logs for security
+
+### Token Authorization
+
+**Location:** index.py:186
+
+```python
+self.session.headers["authorization"] = token_only
+```
+
+- Set in the `authorization` header
+- Updated before each join request
+- Not prefixed with "Bot" or "Bearer"
+
+## Response Handling
+
+Response handling is implemented in `_handle_response()` method (index.py:138-179).
+
+### HTTP Status Codes
+
+<ParamField path="200 OK" type="response">
+  Successfully joined the server.
+  
+  **Location:** index.py:145-149
+  
+  **Actions:**
+  - Log success message
+  - Append token to `output/joined.txt`
+  - Increment `stats.joined` counter
+  
+  **Example:**
+  ```python
+  if response.status_code == 200:
+      NovaLogger.win("Successfully Joined Server", token=masked_token, thread=self.thread_number)
+      self._append_to_file("joined.txt", token)
+      self.stats.joined += 1
+  ```
+</ParamField>
+
+<ParamField path="401 Unauthorized" type="response">
+  Invalid or unauthorized token.
+  
+  **Location:** index.py:151-156
+  
+  **Actions:**
+  - Log failure message
+  - Append token to `output/invalid.txt`
+  - Remove token from tokens list
+  - Increment `stats.invalid` counter
+  
+  **Example:**
+  ```python
+  if response.status_code == 401:
+      NovaLogger.fail("Invalid Token", token=masked_token, thread=self.thread_number)
+      self._append_to_file("invalid.txt", token)
+      token_manager.remove_token(token)
+      self.stats.invalid += 1
+  ```
+</ParamField>
+
+<ParamField path="403 Forbidden" type="response">
+  Token is locked or banned.
+  
+  **Location:** index.py:158-163
+  
+  **Actions:**
+  - Log locked message
+  - Append token to `output/locked.txt`
+  - Remove token from tokens list
+  - Increment `stats.locked` counter
+  
+  **Example:**
+  ```python
+  if response.status_code == 403:
+      NovaLogger.fail("Locked Token", token=masked_token, thread=self.thread_number)
+      self._append_to_file("locked.txt", token)
+      token_manager.remove_token(token)
+      self.stats.locked += 1
+  ```
+</ParamField>
+
+<ParamField path="429 Too Many Requests" type="response">
+  Rate limited by Discord.
+  
+  **Location:** index.py:141-143
+  
+  **Actions:**
+  - Log rate limit message
+  - No file output
+  - Token remains in rotation
+  
+  **Example:**
+  ```python
+  if response.status_code == 429:
+      NovaLogger.fail("Rate Limited", token=masked_token, thread=self.thread_number)
+      return
+  ```
+</ParamField>
+
+### Response Body Checks
+
+<ParamField path="captcha_sitekey" type="response-field">
+  Indicates captcha challenge is required.
+  
+  **Location:** index.py:189
+  
+  **Check:**
+  ```python
+  if "captcha_sitekey" in response.text and self.config.captcha["solve_captcha"]:
+  ```
+  
+  **Actions:**
+  - Log captcha detection
+  - Append token to `output/captcha.txt`
+  - Increment `stats.captcha` counter
+  - Initiate captcha solving flow
+</ParamField>
+
+<ParamField path="captcha_rqdata" type="response-field">
+  Captcha challenge data for solving.
+  
+  **Location:** index.py:195
+  
+  **Usage:**
+  ```python
+  solution = self._handle_captcha(
+      response.json()['captcha_rqdata'],
+      response.json()['captcha_rqtoken']
+  )
+  ```
+</ParamField>
+
+<ParamField path="captcha_rqtoken" type="response-field">
+  Captcha request token for validation.
+  
+  **Location:** index.py:196, 203
+  
+  **Usage:**
+  ```python
+  self.client.headers.update({
+      "x-captcha-rqtoken": response.json()['captcha_rqtoken']
+  })
+  ```
+</ParamField>
+
+<ParamField path="captcha_key" type="response-field">
+  Indicates captcha solution was invalid.
+  
+  **Location:** index.py:171-175
+  
+  **Actions:**
+  - Log solver failure
+  - Append token to `output/failed_captcha.txt`
+  - Increment `stats.failed` counter
+</ParamField>
+
+<ParamField path="Unknown Message" type="response-field">
+  Indicates token-related issue.
+  
+  **Location:** index.py:165-169
+  
+  **Actions:**
+  - Log token issue
+  - Append token to `output/failed_token.txt`
+  - Increment `stats.failed` counter
+</ParamField>
+
+## Captcha Integration
+
+Captcha solving is handled by the `Solver` class from `data/solver.py`.
+
+### Captcha Detection Flow
+
+**Location:** index.py:189-210
+
+1. Check if response contains `"captcha_sitekey"`
+2. Extract `captcha_rqdata` and `captcha_rqtoken` from response
+3. Call appropriate solver based on config
+4. Update headers with solution
+5. Retry join request with captcha headers
+
+### Supported Captcha Solvers
+
+<ParamField path="razorcap" type="solver">
+  RazorCap API integration.
+  
+  **Location:** solver.py:55-89
+  
+  **Endpoint:** `https://api.razorcap.xyz/`
+  
+  **Timeout:** 120 seconds
+</ParamField>
+
+<ParamField path="aisolver" type="solver">
+  AISolver2 integration (note: method name is aisolver2).
+  
+  **Location:** index.py:121
+  
+  **Passes proxy parameter**
+</ParamField>
+
+<ParamField path="hcoptcha" type="solver">
+  HCOptcha API integration.
+  
+  **Location:** solver.py:127-164
+  
+  **Endpoint:** `https://api.hcoptcha.com/api/`
+</ParamField>
+
+<ParamField path="csolver" type="solver">
+  CSolver API integration.
+  
+  **Location:** solver.py:33-53
+  
+  **Endpoint:** `https://api.csolver.xyz/solve`
+  
+  **Hardcoded API Key:** `71144850f4fb4cc55fc0ee6935badddf`
+</ParamField>
+
+<ParamField path="capmonster" type="solver">
+  CapMonster Cloud integration.
+  
+  **Location:** solver.py:203-239
+  
+  **Endpoint:** `https://api.capmonster.cloud/`
+</ParamField>
+
+## Error Handling
+
+### Session Creation Retry
+
+**Location:** index.py:76-80
+
+```python
+def _get_session(self):
+    try:
+        return request.Session(impersonate="chrome"), request.Session(impersonate="chrome")
+    except Exception:
+        return self._get_session()
+```
+
+- Infinite retry on session creation failure
+- Uses recursion to retry
+
+### Join Request Error Handling
+
+**Location:** index.py:213-217
+
+```python
+except Exception as e:
+    NovaLogger.fail("Error", error=e, thread=self.thread_number)
+finally:
+    self.session.close()
+    self.client.close()
+```
+
+- Catches all exceptions during join
+- Logs error with thread number
+- Always closes sessions in finally block
+
+## Session Cleanup
+
+**Location:** index.py:216-221
+
+```python
+finally:
+    self.session.close()
+    self.client.close()
+    
+    if self.config.delay > 0:
+        NovaLogger.note(f"Sleeping for {self.config.delay} seconds")
+        time.sleep(self.config.delay)
+```
+
+- Sessions always closed after each join attempt
+- Delay applied after cleanup if configured
+- New joiner instance created for each token

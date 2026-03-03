@@ -1,0 +1,328 @@
+---
+title: Multi-Threading
+description: Thread pool implementation and concurrent execution management
+---
+
+Filly uses Python's `concurrent.futures.ThreadPoolExecutor` to manage multiple tokens joining servers simultaneously. This advanced threading implementation maximizes throughput while maintaining stability.
+
+## Threading Architecture
+
+### ThreadPoolExecutor Implementation
+
+The main execution loop (`index.py:264-279`) uses a thread pool to process multiple tokens concurrently:
+
+```python
+for invite in invites[:max_joins]:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+        for tokenz, token in enumerate(token_manager.tokens):
+            joins = token_manager.increment_joins(token)
+            
+            if joins >= config.max_joins:
+                with open("output/filled_tokens.txt", "a") as f:
+                    f.write(f"{token}\n")
+                continue
+
+            if stats.invalid > 0 or stats.locked > 0:
+                break
+
+            thread_number = (tokenz % max_threads) + 1
+            joiner = DiscordJoiner(thread_number, config, stats)
+            executor.submit(joiner.join_server, token.strip(), invite)
+```
+
+### Thread Count Calculation
+
+The number of threads is dynamically calculated (`index.py:249`):
+
+```python
+max_threads = min(len(token_manager.tokens), config.threads)
+```
+
+This ensures:
+- Never more threads than available tokens
+- Respects the `threads` setting in `config.json`
+- Optimal resource utilization
+
+## Configuration
+
+Set thread count in `input/config.json`:
+
+```json
+{
+  "threads": 5,
+  "delay": 0,
+  "max_joins": 50
+}
+```
+
+<Warning>
+  Setting `threads` too high (>10) may trigger Discord rate limiting. Recommended: 3-5 threads for best results.
+</Warning>
+
+## Thread-Safe Components
+
+### 1. Statistics Tracking
+
+The `JoinerStats` dataclass (`index.py:41-49`) is shared across all threads:
+
+```python
+@dataclass
+class JoinerStats:
+    total: int = 0
+    joined: int = 0
+    captcha: int = 0
+    captcha_solved: int = 0
+    failed: int = 0
+    locked: int = 0
+    invalid: int = 0
+    current: int = 0
+```
+
+All threads increment these counters atomically during execution.
+
+### 2. Thread-Safe Logging
+
+The `NovaLogger` class uses a threading lock (`data/logger.py:9-54`):
+
+```python
+class NovaLogger:
+    _lock = Lock()
+    _log_file = None
+    
+    @classmethod
+    def _write(cls, message):
+        """Thread-safe logging"""
+        with cls._lock:
+            if cls._log_file:
+                clean_message = cls._strip_colors(message)
+                cls._log_file.write(clean_message + '\n')
+                cls._log_file.flush()
+            print(message + Style.RESET_ALL)
+```
+
+This prevents log corruption when multiple threads write simultaneously.
+
+### 3. Token Manager
+
+The `TokenManager` class (`index.py:51-66`) handles thread-safe token operations:
+
+```python
+class TokenManager:
+    def __init__(self, tokens_file: str):
+        self.tokens_file = Path(tokens_file)
+        self.tokens = self._load_tokens()
+        self.token_joins: Dict[str, int] = {}
+    
+    def _load_tokens(self) -> List[str]:
+        return list(set(self.tokens_file.read_text().splitlines()))
+    
+    def remove_token(self, token: str) -> None:
+        self.tokens = [t for t in self.tokens if t.strip() != token]
+        self.tokens_file.write_text('\n'.join(self.tokens) + '\n')
+
+    def increment_joins(self, token: str) -> int:
+        self.token_joins[token] = self.token_joins.get(token, 0) + 1
+        return self.token_joins[token]
+```
+
+## Per-Thread Components
+
+### DiscordJoiner Instance
+
+Each thread creates its own `DiscordJoiner` instance (`index.py:277-279`):
+
+```python
+thread_number = (tokenz % max_threads) + 1
+joiner = DiscordJoiner(thread_number, config, stats)
+executor.submit(joiner.join_server, token.strip(), invite)
+```
+
+**Thread Number Assignment:**
+- Uses modulo operation: `(tokenz % max_threads) + 1`
+- Ensures thread numbers cycle from 1 to max_threads
+- Example with 5 threads: Token 0→Thread 1, Token 5→Thread 1, Token 7→Thread 3
+
+### Session Management
+
+Each thread maintains isolated HTTP sessions (`index.py:73-88`):
+
+```python
+def _get_session(self):
+    try:
+        return request.Session(impersonate="chrome"), request.Session(impersonate="chrome")
+    except Exception:
+        return self._get_session()
+
+def _setup_session(self):
+    if not self.config.proxyless:
+        proxies = Path('input/proxies.txt').read_text().splitlines()
+        self.proxy = f"http://{random.choice(proxies)}".replace(
+            'sessionid', str(random.randint(1327390889, 1399999999))
+        )
+        self.session.proxies = {"http": self.proxy, "https": self.proxy}
+```
+
+Each thread gets:
+- Two independent sessions (main session + client for captcha retries)
+- Random proxy selection
+- Unique session IDs
+
+## Title Update Thread
+
+A separate daemon thread updates the console title in real-time (`index.py:254-259`):
+
+```python
+title_thread = threading.Thread(
+    target=update_title, 
+    args=(stats, done, len(invites))
+)
+title_thread.daemon = True  # Make thread daemon so it exits with main program
+title_thread.start()
+```
+
+### Update Function
+
+```python
+def update_title(stats: JoinerStats, done: threading.Event, total_invites: int):
+    """Updates the console title with current joining statistics."""
+    while not done.is_set():
+        try:
+            ctypes.windll.kernel32.SetConsoleTitleW(
+                f"Filly | "
+                f"Total: {total_invites} | "
+                f"Joined: {stats.joined} | "
+                f"Failed: {stats.failed} | "
+                f"Captcha: {stats.captcha} ({stats.captcha_solved} solved) | "
+                f"Invalid: {stats.invalid} | "
+                f"Locked: {stats.locked}"
+            )
+            time.sleep(0.1)
+        except Exception as e:
+            NovaLogger.fail(f"Title Update Error: {str(e)}")
+            break
+```
+
+**Update frequency:** Every 0.1 seconds (100ms)
+
+## Thread Lifecycle
+
+### 1. Initialization
+
+```python
+start_time = time.time()
+done = threading.Event()
+max_threads = min(len(token_manager.tokens), config.threads)
+```
+
+### 2. Execution
+
+```python
+with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+    executor.submit(joiner.join_server, token.strip(), invite)
+```
+
+The `with` statement ensures:
+- Automatic thread cleanup
+- Waits for all submitted tasks to complete
+- Proper resource deallocation
+
+### 3. Cleanup
+
+Session cleanup happens in each thread (`index.py:215-221`):
+
+```python
+finally:
+    self.session.close()
+    self.client.close()
+    
+    if self.config.delay > 0:
+        NovaLogger.note(f"Sleeping for {self.config.delay} seconds")
+        time.sleep(self.config.delay)
+```
+
+### 4. Shutdown
+
+Main thread cleanup (`index.py:282-284`):
+
+```python
+finally:
+    # Signal title thread to stop and wait for it
+    done.set()
+    title_thread.join(timeout=1.0)  # Add timeout to prevent hanging
+```
+
+## Break Conditions
+
+Threads stop early if critical errors occur (`index.py:274-275`):
+
+```python
+if stats.invalid > 0 or stats.locked > 0:
+    break
+```
+
+This prevents wasting API calls when tokens are invalid or locked.
+
+## Token Filling Logic
+
+Tokens that reach max joins are saved and skipped (`index.py:269-272`):
+
+```python
+if joins >= config.max_joins:
+    with open("output/filled_tokens.txt", "a") as f:
+        f.write(f"{token}\n")
+    continue
+```
+
+## Performance Optimization
+
+### Best Practices
+
+1. **Thread Count**
+   - Start with 3-5 threads
+   - Monitor for rate limiting (429 errors)
+   - Increase gradually if no errors occur
+
+2. **Delay Configuration**
+   - Set `delay: 0` for maximum speed
+   - Use `delay: 1-2` to avoid rate limits
+   - Higher delays reduce captcha likelihood
+
+3. **Max Joins**
+   - Limit `max_joins` to prevent excessive API usage
+   - Track filled tokens in `output/filled_tokens.txt`
+
+<Accordion title="Why use ThreadPoolExecutor instead of threading.Thread?">
+  `ThreadPoolExecutor` provides:
+  - Automatic thread pool management
+  - Task queue handling
+  - Built-in cleanup via context manager
+  - Better resource utilization
+  - Simpler error handling
+  
+  Manual threading requires managing thread lifecycle, which is error-prone.
+</Accordion>
+
+<Accordion title="Can I use async/await instead of threads?">
+  While async could work, threading is preferred because:
+  - Captcha solving involves long polling (blocking operations)
+  - External HTTP libraries (curl_cffi) are synchronous
+  - ThreadPoolExecutor handles blocking I/O efficiently
+  
+  Async would require rewriting all HTTP calls and solver logic.
+</Accordion>
+
+## Monitoring Thread Activity
+
+Watch the console output to monitor thread activity:
+
+```
+[12:34:56] [✓] Successfully Joined Server ▸ token=ABC123.* thread=1
+[12:34:57] [△] Captcha Detected ▸ token=DEF456.*
+[12:34:58] [✓] Captcha Solved Successfully
+```
+
+The `thread=N` parameter shows which thread processed each token.
+
+<Tip>
+  If you see many threads with the same number, your thread count may be too low. Increase the `threads` value in config.json.
+</Tip>

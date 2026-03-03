@@ -1,0 +1,243 @@
+---
+title: Installation
+description: Complete setup guide for Filly Discord Token Filler
+---
+
+## Prerequisites
+
+Before installing Filly, ensure you have the following:
+
+<Steps>
+  <Step title="Python 3.7+">
+    Verify your Python installation:
+    
+    ```bash
+    python --version
+    ```
+    
+    If you don't have Python installed, download it from [python.org](https://www.python.org/downloads/)
+  </Step>
+  
+  <Step title="Git">
+    Git is required to clone the repository:
+    
+    ```bash
+    git --version
+    ```
+    
+    Download from [git-scm.com](https://git-scm.com/) if needed
+  </Step>
+  
+  <Step title="Windows OS">
+    Filly v1 is designed for Windows and uses Windows-specific libraries (`msvcrt`, `ctypes`)
+    
+    <Note>
+      Linux/Mac users may need to modify console title and keyboard input code
+    </Note>
+  </Step>
+</Steps>
+
+## Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    Download the Filly source code:
+    
+    ```bash
+    git clone https://github.com/Nuu-maan/Filly-Discord-Token-Filler.git
+    cd Filly-Discord-Token-Filler
+    ```
+  </Step>
+  
+  <Step title="Install dependencies">
+    Install all required Python packages:
+    
+    ```bash
+    pip install -r requirements.txt
+    ```
+    
+    This installs:
+    - `requests` - HTTP library for API calls
+    - `curl-cffi` - Browser impersonation for Discord requests
+    - `colorama` - Colored console output
+    - `httpx` - Async HTTP client for captcha solvers
+    - Built-in libraries: `concurrent.futures`, `msvcrt`, `ctypes`, `pathlib`, `dataclasses`
+    
+    <Warning>
+      If you encounter SSL errors with `curl-cffi`, you may need to install Visual C++ redistributables on Windows
+    </Warning>
+  </Step>
+  
+  <Step title="Configure input files">
+    Set up your configuration and input data files:
+    
+    ### config.json
+    
+    Edit `input/config.json` with your settings:
+    
+    ```json
+    {
+        "threads": 10,
+        "proxyless": true,
+        "max_joins": 100,
+        "delay": 1,
+        
+        "captcha": {
+            "solve_captcha": true,
+            "service": "razorcap",
+            "apikey": "your-api-key-here",
+            "proxyless": false
+        }
+    }
+    ```
+    
+    **Configuration options:**
+    
+    | Option | Type | Description |
+    |--------|------|-------------|
+    | `threads` | integer | Number of concurrent threads (1-50 recommended) |
+    | `proxyless` | boolean | Set to `true` to disable proxies for joining |
+    | `max_joins` | integer | Maximum servers each token will join |
+    | `delay` | integer | Delay in seconds between join attempts |
+    | `captcha.solve_captcha` | boolean | Enable automatic captcha solving |
+    | `captcha.service` | string | Captcha service: `razorcap`, `hcoptcha`, `csolver`, `capmonster` |
+    | `captcha.apikey` | string | Your captcha solver API key |
+    | `captcha.proxyless` | boolean | Whether to use proxies for captcha solving |
+    
+    ### tokens.txt
+    
+    Add your Discord tokens (one per line):
+    
+    ```text
+    email:password:token
+    token_only_format
+    another_token
+    ```
+    
+    <Note>
+      Tokens can be in `email:password:token` format or just the token itself. The script automatically extracts the token portion.
+    </Note>
+    
+    ### invites.txt
+    
+    Add Discord invite codes (one per line):
+    
+    ```text
+    api
+    discord
+    your-invite-code
+    ```
+    
+    <Warning>
+      Use invite codes only, not full URLs. For example, use `api` instead of `discord.gg/api`
+    </Warning>
+    
+    ### proxies.txt (optional)
+    
+    If using proxies (`"proxyless": false`), add proxies in this format:
+    
+    ```text
+    username:password@ip:port
+    ip:port
+    ```
+    
+    Example:
+    ```text
+    user:pass@192.168.1.1:8080
+    10.0.0.1:3128
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    Test that everything is configured correctly:
+    
+    ```bash
+    python index.py
+    ```
+    
+    You should see the Filly banner:
+    
+    ```
+                         █████▒██▓ ██▓     ██▓   ▓██   ██▓
+                         ▓██   ▒▓██▒▓██▒    ▓██▒    ▒██  ██▒
+                         ▒████ ░▒██▒▒██░    ▒██░     ▒██ ██░
+    ...
+    ```
+    
+    <Note>
+      The script will start joining servers immediately. Press Ctrl+C to stop if you're just testing.
+    </Note>
+  </Step>
+</Steps>
+
+## Directory structure
+
+After installation, your directory should look like this:
+
+```
+Filly-Discord-Token-Filler/
+├── input/
+│   ├── config.json       # Configuration settings
+│   ├── tokens.txt        # Discord tokens
+│   ├── invites.txt       # Server invite codes
+│   └── proxies.txt       # Proxy list (optional)
+├── output/
+│   ├── joined.txt        # Successfully joined
+│   ├── failed.txt        # Failed attempts
+│   ├── invalid.txt       # Invalid tokens
+│   ├── locked.txt        # Locked accounts
+│   ├── captcha.txt       # Captcha encounters
+│   ├── failed_captcha.txt # Captcha failures
+│   └── filled_tokens.txt # Max joins reached
+├── data/
+│   ├── solver.py         # Captcha solver implementations
+│   └── logger.py         # Custom logging system
+├── index.py              # Main script
+├── requirements.txt      # Python dependencies
+└── readme.md
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ModuleNotFoundError: No module named 'curl_cffi'">
+    Install curl-cffi with proper SSL support:
+    
+    ```bash
+    pip install --upgrade curl-cffi
+    ```
+    
+    On Windows, you may need Visual C++ redistributables.
+  </Accordion>
+  
+  <Accordion title="All tokens showing as invalid">
+    - Verify tokens are valid and not expired
+    - Check that tokens are in the correct format in `tokens.txt`
+    - Ensure one token per line with no extra whitespace
+    - Test a token manually in Discord to confirm it works
+  </Accordion>
+  
+  <Accordion title="Proxy connection errors">
+    - Verify proxy format: `username:password@ip:port` or `ip:port`
+    - Test proxies are working and not banned by Discord
+    - Try setting `"proxyless": true` to test without proxies
+    - Check that proxies support HTTPS connections
+  </Accordion>
+  
+  <Accordion title="Captcha solver timing out">
+    - Verify your API key is valid and has credits
+    - Check the captcha service status
+    - Try a different solver service (`razorcap`, `hcoptcha`, `csolver`, `capmonster`)
+    - Increase timeout in `solver.py` if needed
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<Card
+  title="Quickstart guide"
+  icon="rocket"
+  href="/quickstart"
+>
+  Learn how to join your first Discord server with Filly
+</Card>

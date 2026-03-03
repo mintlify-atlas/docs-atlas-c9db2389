@@ -1,0 +1,522 @@
+---
+title: Troubleshooting
+description: Solutions for common errors and issues
+---
+
+This guide covers common issues you may encounter when using Filly and how to resolve them.
+
+## HTTP Response Codes
+
+Filly handles Discord API responses in the `_handle_response()` method (`index.py:138-179`). Understanding these codes is crucial for debugging.
+
+### 200 - Success
+
+```python
+if response.status_code == 200:
+    NovaLogger.win("Successfully Joined Server", token=masked_token, thread=self.thread_number)
+    self._append_to_file("joined.txt", token)
+    self.stats.joined += 1
+    return
+```
+
+**Meaning:** Token successfully joined the server.  
+**Output:** Token saved to `output/joined.txt`  
+**Action:** None - success!
+
+### 401 - Invalid Token
+
+```python
+if response.status_code == 401:
+    NovaLogger.fail("Invalid Token", token=masked_token, thread=self.thread_number)
+    self._append_to_file("invalid.txt", token)
+    token_manager.remove_token(token)
+    self.stats.invalid += 1
+    return
+```
+
+**Meaning:** The token is invalid, expired, or malformed.  
+**Output:** Token saved to `output/invalid.txt` and removed from `input/tokens.txt`  
+**Action Required:**
+
+<Warning>
+  Invalid tokens are automatically removed from your token list. Check `output/invalid.txt` to see which tokens failed.
+</Warning>
+
+<Accordion title="Why are my tokens invalid?">
+  Common causes:
+  - Token format is incorrect (should be base64.timestamp.signature)
+  - Token has expired
+  - Token was from a deleted account
+  - Token was generated incorrectly
+  
+  **Solution:** Verify token format and regenerate if needed.
+</Accordion>
+
+### 403 - Locked Token
+
+```python
+if response.status_code == 403:
+    NovaLogger.fail("Locked Token", token=masked_token, thread=self.thread_number)
+    self._append_to_file("locked.txt", token)
+    token_manager.remove_token(token)
+    self.stats.locked += 1
+    return
+```
+
+**Meaning:** Discord has locked the account (suspicious activity detected).  
+**Output:** Token saved to `output/locked.txt` and removed from `input/tokens.txt`  
+**Action Required:**
+
+<Warning>
+  Locked tokens indicate Discord flagged the account. These tokens are automatically removed and cannot be used.
+</Warning>
+
+<Accordion title="Why do tokens get locked?">
+  Common triggers:
+  - Joining too many servers too quickly
+  - Using low-quality or flagged proxies
+  - Account has no activity/is brand new
+  - Failed too many captchas
+  - IP address is blacklisted
+  
+  **Solution:** 
+  - Use higher quality proxies
+  - Add delays between joins (`delay` in config)
+  - Warm up accounts before mass joining
+  - Reduce thread count to avoid rate limiting
+</Accordion>
+
+### 429 - Rate Limited
+
+```python
+if response.status_code == 429:
+    NovaLogger.fail("Rate Limited", token=masked_token, thread=self.thread_number)
+    return
+```
+
+**Meaning:** Discord is temporarily blocking requests (too many too fast).  
+**Output:** Log message only - token is NOT removed  
+**Action Required:**
+
+<Warning>
+  Rate limiting means you're sending requests too quickly. This is a temporary block, but repeated rate limiting can lead to permanent bans.
+</Warning>
+
+<Accordion title="How to fix rate limiting (429)?">
+  **Immediate fixes:**
+  1. Reduce thread count in `config.json`:
+     ```json
+     {"threads": 3}  // Lower from 5+ to 3
+     ```
+  
+  2. Add delay between joins:
+     ```json
+     {"delay": 2}  // Wait 2 seconds between each join
+     ```
+  
+  3. Use higher quality proxies (residential > datacenter)
+  
+  4. Reduce `max_joins` to join fewer servers per token
+  
+  **Long-term solutions:**
+  - Rotate proxies more frequently
+  - Space out join operations over time
+  - Use fewer tokens per run
+  - Check if proxies are shared/banned
+</Accordion>
+
+## Captcha Issues
+
+Captchas are detected when Discord's response contains `captcha_sitekey` (`index.py:189-210`):
+
+```python
+if "captcha_sitekey" in response.text and self.config.captcha["solve_captcha"]:
+    NovaLogger.alert("Captcha Detected", token=masked_token)
+    self._append_to_file("captcha.txt", token)
+    self.stats.captcha += 1
+
+    solution = self._handle_captcha(
+        response.json()['captcha_rqdata'],
+        response.json()['captcha_rqtoken']
+    )
+
+    if solution:
+        self.client.headers.update({
+            "authorization": token_only,
+            "x-captcha-key": solution,
+            "x-captcha-rqtoken": response.json()['captcha_rqtoken']
+        })
+        response = self.client.post(
+            f"https://discord.com/api/v9/invites/{invite}",
+            json={},
+            proxy=None if self.config.proxyless else self.proxy
+        )
+```
+
+### Captcha Not Solving
+
+**Error in logs:** Token appears in `output/failed_captcha.txt`
+
+```python
+if "captcha_key" in response.text:
+    NovaLogger.fail("Failed Due To Solver Issue", token=masked_token, error=response.json()['captcha_key'], thread=self.thread_number)
+    self._append_to_file("failed_captcha.txt", token)
+    self.stats.failed += 1
+    return
+```
+
+<Accordion title="Why is captcha solving failing?">
+  **Check these issues:**
+  
+  1. **Invalid API Key**
+     - Verify `apikey` in `config.json` is correct
+     - Check solver service dashboard for balance
+  
+  2. **Solver Service Down**
+     - Test solver API directly
+     - Check solver status page
+     - Try alternative solver
+  
+  3. **Incorrect Service Name**
+     - Must be one of: `razorcap`, `hcoptcha`, `csolver`, `capmonster`
+     - Case-sensitive in config.json
+  
+  4. **Proxy Issues**
+     - Some solvers require proxies
+     - Set `"proxyless": true` if solver supports it
+     - Verify proxy format: `user:pass@ip:port`
+  
+  5. **Timeout**
+     - RazorCap timeout: 120 seconds (`data/solver.py:55`)
+     - Other solvers poll indefinitely
+     - Network latency may cause failures
+  
+  **Solutions:**
+  ```json
+  {
+    "captcha": {
+      "solve_captcha": true,
+      "service": "razorcap",
+      "apikey": "verify-this-is-correct",
+      "proxyless": false
+    }
+  }
+  ```
+</Accordion>
+
+### Captcha Detected But Not Configured
+
+**Error:** Captcha detected but `solve_captcha: false` in config
+
+**Result:** Join fails, captcha not attempted
+
+<Accordion title="How to enable captcha solving?">
+  Edit `input/config.json`:
+  
+  ```json
+  {
+    "captcha": {
+      "solve_captcha": true,      // Enable solving
+      "service": "razorcap",       // Choose solver
+      "apikey": "your-api-key",    // Add API key
+      "proxyless": false           // Set based on solver
+    }
+  }
+  ```
+  
+  See [Captcha Solvers](/advanced/captcha-solvers) for service-specific setup.
+</Accordion>
+
+## Proxy Issues
+
+Proxies are configured per-thread in `_setup_session()` (`index.py:82-88`):
+
+```python
+def _setup_session(self):
+    if not self.config.proxyless:
+        proxies = Path('input/proxies.txt').read_text().splitlines()
+        self.proxy = f"http://{random.choice(proxies)}".replace(
+            'sessionid', str(random.randint(1327390889, 1399999999))
+        )
+        self.session.proxies = {"http": self.proxy, "https": self.proxy}
+```
+
+### Connection Errors
+
+**Error:** Timeouts, connection refused, or proxy errors in logs
+
+<Accordion title="Proxy troubleshooting steps">
+  1. **Verify Proxy Format**
+     - Correct: `user:pass@ip:port` or `ip:port`
+     - Incorrect: `http://ip:port` (remove protocol)
+     - One proxy per line in `input/proxies.txt`
+  
+  2. **Test Proxy Connection**
+     - Use external tool to verify proxy works
+     - Check if proxy IP is banned by Discord
+     - Ensure proxy supports HTTPS
+  
+  3. **Proxy Quality**
+     - Residential proxies: Best success rate
+     - Datacenter proxies: Higher ban risk
+     - Free proxies: Often blacklisted
+  
+  4. **Session IDs**
+     - Code replaces `sessionid` with random number
+     - Ensures unique session per request
+     - Format: `user:pass@ip:port:sessionid=123456789`
+  
+  5. **Proxyless Mode**
+     - Set `"proxyless": true` to disable proxies
+     - Only use if your IP is clean
+     - Higher risk of rate limiting
+</Accordion>
+
+### Proxy Rate Limiting
+
+**Issue:** Multiple threads using same proxy get rate limited
+
+<Accordion title="How to manage proxy rotation?">
+  The code randomly selects proxies per thread:
+  ```python
+  self.proxy = f"http://{random.choice(proxies)}"
+  ```
+  
+  **Improvements:**
+  1. Add more proxies to `input/proxies.txt`
+  2. Reduce thread count to avoid proxy reuse
+  3. Use rotating proxy service
+  4. Enable session IDs for sticky sessions
+  
+  **Solver Proxy Updates:**
+  Solvers update proxies independently (`data/solver.py:26-31`):
+  ```python
+  def update_proxy(self):
+      global proxies
+      if not config["captcha"]["proxyless"]:
+          proxy = random.choice(proxies).strip()
+          proxies = {f"http://{proxy}"}
+          return proxies
+  ```
+</Accordion>
+
+## Token File Issues
+
+### Empty Token List
+
+**Error:** No tokens loaded or `len(token_manager.tokens) == 0`
+
+<Accordion title="Token file requirements">
+  **File:** `input/tokens.txt`
+  
+  **Format:**
+  ```
+  MTI3NjU0MzIxMDk4NzY1NDMyMQ.AbCdEf.Gh_IjKlMnOpQrStUvWxYz
+  MTI3NjU0MzIxMDk4NzY1NDMyMg.XyZwVu.Ts_RqPoNmLkJiHgFeDcBa
+  ```
+  
+  **Rules:**
+  - One token per line
+  - No empty lines
+  - No comments or headers
+  - Tokens auto-deduplicated (`index.py:58`)
+  
+  **Loading:**
+  ```python
+  def _load_tokens(self) -> List[str]:
+      return list(set(self.tokens_file.read_text().splitlines()))
+  ```
+</Accordion>
+
+### Token Auto-Removal
+
+Tokens are removed when invalid or locked (`index.py:60-62`):
+
+```python
+def remove_token(self, token: str) -> None:
+    self.tokens = [t for t in self.tokens if t.strip() != token]
+    self.tokens_file.write_text('\n'.join(self.tokens) + '\n')
+```
+
+**Triggers:**
+- 401 Invalid Token
+- 403 Locked Token
+
+<Warning>
+  Token removal is immediate and permanent. Keep a backup of `input/tokens.txt` before running.
+</Warning>
+
+## Unknown Message Error
+
+```python
+if "Unknown Message" in response.text:
+    NovaLogger.fail("Failed Due To Token Issue", token=masked_token, error="Unknown Message", thread=self.thread_number)
+    self._append_to_file("failed_token.txt", token)
+    self.stats.failed += 1
+    return
+```
+
+<Accordion title="What causes 'Unknown Message' errors?">
+  This error occurs when:
+  - Token is valid but has restrictions
+  - Account age is too new
+  - Account needs phone verification
+  - Account is shadow-banned
+  
+  **Solution:**
+  - Check account status manually
+  - Use aged/verified accounts
+  - Review tokens in `output/failed_token.txt`
+</Accordion>
+
+## Configuration Issues
+
+### Config Not Loading
+
+**Error:** `FileNotFoundError` or JSON parse error
+
+<Accordion title="Config file troubleshooting">
+  **File:** `input/config.json`
+  
+  **Valid structure:**
+  ```json
+  {
+    "delay": 0,
+    "proxyless": false,
+    "threads": 5,
+    "max_joins": 50,
+    "captcha": {
+      "solve_captcha": true,
+      "service": "razorcap",
+      "apikey": "your-api-key",
+      "proxyless": false
+    }
+  }
+  ```
+  
+  **Common errors:**
+  - Missing comma between fields
+  - Trailing comma on last field
+  - Unquoted strings
+  - Wrong quotation marks (use `"` not `'`)
+  
+  **Loading code (`index.py:243`):**
+  ```python
+  config = JoinerConfig(**json.loads(Path('input/config.json').read_text()))
+  ```
+</Accordion>
+
+## Output Files
+
+All results are saved to `output/` directory:
+
+| File | Content | Trigger |
+|------|---------|--------|
+| `joined.txt` | Successfully joined | Status 200 |
+| `invalid.txt` | Invalid tokens | Status 401 |
+| `locked.txt` | Locked accounts | Status 403 |
+| `captcha.txt` | Captcha encountered | Captcha detected |
+| `failed_captcha.txt` | Captcha solve failed | Invalid captcha_key |
+| `failed_token.txt` | Token issues | Unknown Message |
+| `failed.txt` | Other failures | All other errors |
+| `filled_tokens.txt` | Reached max_joins | joins >= max_joins |
+
+<Accordion title="How to interpret output files?">
+  **Good indicators:**
+  - High count in `joined.txt` = success
+  - Low count in `captcha.txt` = good proxies/setup
+  
+  **Warning signs:**
+  - Many in `locked.txt` = slow down, improve proxies
+  - Many in `invalid.txt` = token source issue
+  - Many in `failed_captcha.txt` = solver problem
+  
+  **Action items:**
+  - Review `invalid.txt` and `locked.txt` to clean token list
+  - Check `failed_captcha.txt` for solver config issues
+  - Monitor `captcha.txt` to gauge detection rate
+</Accordion>
+
+## Performance Issues
+
+### Slow Execution
+
+<Accordion title="Why is joining taking so long?">
+  **Common causes:**
+  
+  1. **High Delay Setting**
+     - Check `"delay"` in config (seconds between joins)
+     - Set to 0 for maximum speed
+  
+  2. **Low Thread Count**
+     - Increase `"threads"` in config
+     - Recommended: 3-5 threads
+  
+  3. **Captcha Solving**
+     - Solvers can take 10-120 seconds
+     - RazorCap timeout: 120s (`data/solver.py:55`)
+     - Other solvers poll indefinitely
+  
+  4. **Slow Proxies**
+     - Test proxy latency
+     - Use geographically closer proxies
+     - Switch to faster proxy provider
+  
+  5. **Too Many Tokens**
+     - Limit tokens per run
+     - Use `max_joins` to control iterations
+</Accordion>
+
+### Memory Usage
+
+<Accordion title="High memory consumption?">
+  **Causes:**
+  - Each thread creates 2 HTTP sessions
+  - Session headers include large x-super-properties
+  
+  **Solutions:**
+  - Reduce thread count
+  - Limit token list size
+  - Sessions are closed after each join (`index.py:216-217`):
+    ```python
+    finally:
+        self.session.close()
+        self.client.close()
+    ```
+</Accordion>
+
+## Debug Mode
+
+Enable detailed logging for troubleshooting:
+
+```python
+NovaLogger.config(debug=True, log_file="output/debug.log")
+```
+
+This will:
+- Write all logs to `output/debug.log`
+- Include trace-level messages
+- Show detailed error information
+
+<Tip>
+  Check the console output for real-time status. Each log entry includes:
+  - Timestamp
+  - Event type (✓, ⨯, △)
+  - Token (masked)
+  - Thread number
+  - Error details
+</Tip>
+
+## Getting Help
+
+If issues persist after trying these solutions:
+
+1. Check `output/` files for error patterns
+2. Review config.json for typos
+3. Test with a single thread and token
+4. Verify all input files exist and are formatted correctly
+5. Try proxyless mode to isolate proxy issues
+
+<Warning>
+  Never share your full tokens or API keys when seeking help. Use masked versions like `ABC123.*****`.
+</Warning>

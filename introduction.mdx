@@ -1,0 +1,120 @@
+---
+title: Introduction
+description: Automate Discord server joining with multi-threaded token management and intelligent captcha handling
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="Filly Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="Filly Hero Dark"
+/>
+
+## What is Filly?
+
+Filly is a Discord server joiner script designed to automate the process of joining multiple Discord servers using token lists. Built with Python, it provides a robust solution for managing large-scale server joins with support for proxy rotation, captcha solving, and comprehensive logging.
+
+<Note>
+  This is **version 1** of Filly - an open-source release. A commercial v2 with enhanced features is planned for future release.
+</Note>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Multi-threaded joining" icon="gauge-high">
+    Configure up to unlimited concurrent threads to join servers simultaneously, maximizing efficiency
+  </Card>
+  <Card title="Intelligent captcha handling" icon="shield-check">
+    Integrated support for multiple captcha solving services including RazorCap, HCoptcha, CSolver, and CapMonster
+  </Card>
+  <Card title="Proxy support" icon="globe">
+    Built-in proxy rotation with session management for enhanced anonymity and rate limit avoidance
+  </Card>
+  <Card title="Comprehensive logging" icon="file-lines">
+    Automatic categorization of results: successful joins, failed attempts, invalid tokens, locked accounts, and captcha encounters
+  </Card>
+  <Card title="Token management" icon="key">
+    Automatic token validation, join tracking, and removal of invalid/locked tokens from the active pool
+  </Card>
+  <Card title="Real-time statistics" icon="chart-line">
+    Live console title updates showing join progress, success rates, and error counts
+  </Card>
+</CardGroup>
+
+## Core capabilities
+
+### Browser impersonation
+
+Filly uses `curl-cffi` to impersonate Chrome browsers, mimicking legitimate Discord client behavior:
+
+```python
+session = request.Session(impersonate="chrome")
+```
+
+All requests include proper headers like `sec-ch-ua`, `x-super-properties`, and realistic user agents to avoid detection.
+
+### Automatic result categorization
+
+Every join attempt is automatically logged to organized output files:
+
+- `joined.txt` - Successfully joined servers
+- `failed.txt` - Failed join attempts
+- `invalid.txt` - Invalid or expired tokens
+- `locked.txt` - Locked/banned accounts
+- `captcha.txt` - Tokens that encountered captchas
+- `failed_captcha.txt` - Captcha solving failures
+- `filled_tokens.txt` - Tokens that reached max join limit
+
+### Flexible configuration
+
+Control every aspect of the joining process through `config.json`:
+
+```json
+{
+    "threads": 10,
+    "proxyless": true,
+    "max_joins": 100,
+    "delay": 1,
+    "captcha": {
+        "solve_captcha": true,
+        "service": "razorcap",
+        "apikey": "your-api-key",
+        "proxyless": false
+    }
+}
+```
+
+<Warning>
+  Use this tool responsibly and in accordance with Discord's Terms of Service. Automated account actions may violate platform policies.
+</Warning>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Set up Filly with Python dependencies and initial configuration
+  </Card>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Join your first Discord server in under 5 minutes
+  </Card>
+</CardGroup>
+
+## Technical requirements
+
+- **Python**: Version 3.7 or higher
+- **Platform**: Windows (uses `msvcrt` and `ctypes` for Windows-specific features)
+- **Dependencies**: All required packages listed in `requirements.txt`
+- **Optional**: Proxy list for enhanced anonymity
+- **Optional**: Captcha solver API key for automated captcha handling

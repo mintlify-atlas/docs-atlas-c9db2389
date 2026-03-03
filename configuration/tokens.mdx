@@ -1,0 +1,252 @@
+---
+title: 'Token Configuration'
+description: 'How to configure Discord tokens in input/tokens.txt'
+icon: 'key'
+---
+
+Discord tokens are stored in `input/tokens.txt` and are used to authenticate with Discord's API when joining servers.
+
+## Token Format
+
+Filly supports multiple token formats. Add one token per line in `input/tokens.txt`.
+
+### Supported Formats
+
+<Tabs>
+  <Tab title="Token only">
+    The most common format - just the Discord token:
+    
+    ```
+    MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+    OTg3NjU0MzIxMDk4NzY1NDMyMQ.HiJkLm.NoPqRsTuVwXyZaBcDeFgHi
+    ```
+    
+    <Info>
+    This format is recommended for most use cases.
+    </Info>
+  </Tab>
+  
+  <Tab title="Email:Password:Token">
+    Full credentials with email and password:
+    
+    ```
+    user@example.com:mypassword123:MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+    another@example.com:password456:OTg3NjU0MzIxMDk4NzY1NDMyMQ.HiJkLm.NoPqRsTuVwXyZaBcDeFgHi
+    ```
+    
+    <Note>
+    The email and password are not used by the tool - only the token portion is extracted.
+    </Note>
+  </Tab>
+  
+  <Tab title="Username:Password:Token">
+    Credentials with username instead of email:
+    
+    ```
+    username123:mypassword:MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+    cooluser:pass123:OTg3NjU0MzIxMDk4NzY1NDMyMQ.HiJkLm.NoPqRsTuVwXyZaBcDeFgHi
+    ```
+  </Tab>
+</Tabs>
+
+### Token Extraction
+
+The tool automatically extracts the token from any format by splitting on colons and taking the last segment:
+
+```python
+token_only = token.split(":")[-1]
+```
+
+This means all three formats above are valid and will work correctly.
+
+## Token Structure
+
+Discord tokens have three parts separated by dots:
+
+```
+USER_ID.TIMESTAMP.HMAC_SIGNATURE
+```
+
+**Example**: `MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ`
+
+- **Part 1**: Base64-encoded user ID
+- **Part 2**: Base64-encoded timestamp
+- **Part 3**: HMAC signature for authentication
+
+<Warning>
+Never share your Discord tokens. They provide full access to your account.
+</Warning>
+
+## Token Validation
+
+Tokens are validated during the join process. Invalid tokens receive different responses:
+
+### Response Codes
+
+<ResponseField name="200 OK" type="success">
+  Token successfully joined the server. Saved to `output/joined.txt`.
+</ResponseField>
+
+<ResponseField name="401 Unauthorized" type="error">
+  Token is invalid or expired. Automatically removed from `input/tokens.txt` and saved to `output/invalid.txt`.
+</ResponseField>
+
+<ResponseField name="403 Forbidden" type="error">
+  Token is locked or banned. Automatically removed from `input/tokens.txt` and saved to `output/locked.txt`.
+</ResponseField>
+
+<ResponseField name="429 Too Many Requests" type="error">
+  Rate limited. The tool will continue with other tokens.
+</ResponseField>
+
+## Token Management
+
+### Automatic Removal
+
+The tool automatically removes problematic tokens from `input/tokens.txt`:
+
+```python
+def remove_token(self, token: str) -> None:
+    self.tokens = [t for t in self.tokens if t.strip() != token]
+    self.tokens_file.write_text('\n'.join(self.tokens) + '\n')
+```
+
+Tokens are removed when they:
+- Return 401 (invalid)
+- Return 403 (locked)
+
+<Note>
+Tokens that encounter captcha or rate limits are **not** automatically removed, as they may still be valid.
+</Note>
+
+### Duplicate Removal
+
+Duplicate tokens are automatically removed when loading:
+
+```python
+def _load_tokens(self) -> List[str]:
+    return list(set(self.tokens_file.read_text().splitlines()))
+```
+
+### Join Tracking
+
+Each token's join count is tracked in memory:
+
+```python
+def increment_joins(self, token: str) -> int:
+    self.token_joins[token] = self.token_joins.get(token, 0) + 1
+    return self.token_joins[token]
+```
+
+Tokens that reach `max_joins` are saved to `output/filled_tokens.txt`.
+
+## Example Configuration
+
+### Basic Setup
+
+```txt input/tokens.txt
+MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+OTg3NjU0MzIxMDk4NzY1NDMyMQ.HiJkLm.NoPqRsTuVwXyZaBcDeFgHi
+MTExMjIyMzMzNDQ0NTU1NjY2Nw.JkLmNo.PqRsTuVwXyZaBcDeFgHiJk
+```
+
+### With Credentials
+
+```txt input/tokens.txt
+user1@example.com:password123:MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+user2@example.com:password456:OTg3NjU0MzIxMDk4NzY1NDMyMQ.HiJkLm.NoPqRsTuVwXyZaBcDeFgHi
+cooluser:mypass:MTExMjIyMzMzNDQ0NTU1NjY2Nw.JkLmNo.PqRsTuVwXyZaBcDeFgHiJk
+```
+
+### Mixed Format
+
+```txt input/tokens.txt
+MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.GaBcDe.FgHiJkLmNoPqRsTuVwXyZ
+user@example.com:password:OTg3NjU0MzIxMDk4NzY1NDMyMQ.HiJkLm.NoPqRsTuVwXyZaBcDeFgHi
+username:pass:MTExMjIyMzMzNDQ0NTU1NjY2Nw.JkLmNo.PqRsTuVwXyZaBcDeFgHiJk
+```
+
+<Info>
+All three formats can be mixed in the same file. The tool handles them automatically.
+</Info>
+
+## Security Best Practices
+
+<Warning>
+**Token Security**
+
+Discord tokens are equivalent to your password. Protect them accordingly:
+
+- Never commit tokens to Git repositories
+- Don't share tokens with untrusted parties
+- Rotate tokens regularly
+- Use separate accounts for automation
+- Monitor token activity for suspicious behavior
+</Warning>
+
+<Tip>
+**Recommendations**:
+
+- Keep `input/tokens.txt` in `.gitignore`
+- Use environment variables for sensitive tokens
+- Regularly check `output/invalid.txt` and `output/locked.txt`
+- Maintain a backup of working tokens
+- Test with a few tokens before running large batches
+</Tip>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="All tokens showing as invalid">
+    **Common causes**:
+    - Tokens are expired or revoked
+    - Incorrect token format (missing parts)
+    - Extra whitespace or line breaks
+    - Tokens from terminated accounts
+    
+    **Solutions**:
+    - Verify token format matches Discord's structure
+    - Remove any extra spaces or characters
+    - Test tokens manually using Discord's API
+    - Generate fresh tokens
+  </Accordion>
+  
+  <Accordion title="Tokens getting locked immediately">
+    **Common causes**:
+    - Too many requests too quickly
+    - New accounts without verified email
+    - Accounts flagged for suspicious activity
+    - IP address is banned or flagged
+    
+    **Solutions**:
+    - Increase delay between requests
+    - Use proxies to distribute requests
+    - Verify email addresses on accounts
+    - Use aged accounts instead of fresh ones
+  </Accordion>
+  
+  <Accordion title="Tokens not being removed from file">
+    **Common causes**:
+    - File permission issues
+    - Token format mismatch (extra spaces)
+    - File is locked by another process
+    
+    **Solutions**:
+    - Check file permissions on `input/tokens.txt`
+    - Ensure consistent token formatting
+    - Close other programs accessing the file
+  </Accordion>
+</AccordionGroup>
+
+## Token Privacy
+
+Tokens are masked in console output for security:
+
+```python
+token_only = token.split(":")[-1]
+masked_token = f"{token_only.split('.')[0]}.*****"
+```
+
+**Example output**: `MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.*****`
+
+Only the user ID portion (first part) is shown in logs.

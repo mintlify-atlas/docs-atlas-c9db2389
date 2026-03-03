@@ -1,0 +1,392 @@
+---
+title: 'Proxy Configuration'
+description: 'Configure HTTP/HTTPS proxies with session rotation in input/proxies.txt'
+icon: 'shield'
+---
+
+Proxies help distribute requests across multiple IP addresses, reducing the risk of rate limiting and detection. Configure proxies in `input/proxies.txt`.
+
+## Enabling Proxies
+
+Proxies are disabled by default. Enable them in `config.json`:
+
+```json
+{
+  "proxyless": false
+}
+```
+
+<Note>
+Set `"proxyless": true` to disable proxy usage and connect directly.
+</Note>
+
+## Proxy Format
+
+Add one proxy per line in `input/proxies.txt` using the authentication format:
+
+### Basic Format
+
+```txt
+username:password@host:port
+```
+
+**Example**:
+```txt
+user123:pass456@proxy.example.com:8080
+myuser:mypass@10.0.0.1:3128
+account:secret@proxy2.example.com:8888
+```
+
+### Session Rotation Format
+
+For proxies that support session IDs (sticky sessions), use the `sessionid` placeholder:
+
+```txt
+username:password@host:port:sessionid
+```
+
+**Example**:
+```txt
+user123:pass456@proxy.example.com:8080:sessionid
+myuser:mypass@rotating.proxy.com:3128:sessionid
+```
+
+<Info>
+The `sessionid` placeholder is automatically replaced with a random number for session rotation.
+</Info>
+
+## Session Rotation
+
+Session rotation allows you to get different IP addresses from the same proxy provider by changing the session ID.
+
+### How It Works
+
+The tool automatically replaces `sessionid` with a random number between `1327390889` and `1399999999`:
+
+```python
+proxies = Path('input/proxies.txt').read_text().splitlines()
+self.proxy = f"http://{random.choice(proxies)}".replace(
+    'sessionid', str(random.randint(1327390889, 1399999999))
+)
+```
+
+**Before replacement**:
+```
+user:pass@proxy.example.com:8080:sessionid
+```
+
+**After replacement**:
+```
+user:pass@proxy.example.com:8080:1345678912
+```
+
+### Session Rotation Example
+
+Each thread gets a different session:
+
+```
+Thread 1: user:pass@proxy.example.com:8080:1327456789
+Thread 2: user:pass@proxy.example.com:8080:1356789123
+Thread 3: user:pass@proxy.example.com:8080:1398765432
+```
+
+This distributes requests across multiple IP addresses from the same proxy pool.
+
+## Proxy Selection
+
+Proxies are randomly selected for each thread:
+
+```python
+if not self.config.proxyless:
+    proxies = Path('input/proxies.txt').read_text().splitlines()
+    self.proxy = f"http://{random.choice(proxies)}".replace(
+        'sessionid', str(random.randint(1327390889, 1399999999))
+    )
+    self.session.proxies = {"http": self.proxy, "https": self.proxy}
+```
+
+### Selection Behavior
+
+- One random proxy is selected per thread
+- The same proxy is used for the entire thread lifecycle
+- Different threads may use the same or different proxies
+- Session IDs are unique even if the same proxy is selected
+
+## Proxy Types
+
+### HTTP/HTTPS Proxies
+
+The tool sets proxies for both HTTP and HTTPS:
+
+```python
+self.session.proxies = {"http": self.proxy, "https": self.proxy}
+```
+
+Both protocols use the same proxy URL with the `http://` scheme.
+
+<Warning>
+SOCKS proxies are not currently supported. Only HTTP/HTTPS proxies work.
+</Warning>
+
+## Example Configurations
+
+### Single Proxy
+
+```txt input/proxies.txt
+user:pass@proxy.example.com:8080
+```
+
+### Multiple Proxies
+
+```txt input/proxies.txt
+user1:pass1@proxy1.example.com:8080
+user2:pass2@proxy2.example.com:3128
+user3:pass3@proxy3.example.com:8888
+```
+
+### With Session Rotation
+
+```txt input/proxies.txt
+user:pass@rotating.proxy.com:8080:sessionid
+account:secret@premium.proxy.com:3128:sessionid
+```
+
+### Mixed Format
+
+```txt input/proxies.txt
+user:pass@static.proxy.com:8080
+account:secret@rotating.proxy.com:3128:sessionid
+user2:pass2@proxy2.example.com:8888:sessionid
+```
+
+<Info>
+You can mix static proxies (without sessionid) and rotating proxies (with sessionid) in the same file.
+</Info>
+
+## Proxy Authentication
+
+All proxies must use authentication. The format is:
+
+```
+username:password@host:port
+```
+
+<ParamField path="username" type="string" required>
+  Proxy authentication username provided by your proxy service.
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Proxy authentication password provided by your proxy service.
+</ParamField>
+
+<ParamField path="host" type="string" required>
+  Proxy server hostname or IP address.
+</ParamField>
+
+<ParamField path="port" type="number" required>
+  Proxy server port (commonly 8080, 3128, 8888, etc.).
+</ParamField>
+
+<ParamField path="sessionid" type="string">
+  Optional placeholder for session rotation. Replaced with random number.
+</ParamField>
+
+## Captcha Proxy Settings
+
+Captcha solvers can use separate proxy settings configured in `config.json`:
+
+```json
+{
+  "captcha": {
+    "solve_captcha": true,
+    "service": "razorcap",
+    "apikey": "your-api-key",
+    "proxyless": false
+  }
+}
+```
+
+<ParamField path="captcha.proxyless" type="boolean" default="false">
+  Whether the captcha solver should use proxies from `input/proxies.txt`.
+  
+  - `true`: Captcha solver runs without proxies
+  - `false`: Captcha solver randomly selects from `input/proxies.txt`
+</ParamField>
+
+<Note>
+The main `proxyless` setting and `captcha.proxyless` are independent. You can use proxies for joins but not captcha solving, or vice versa.
+</Note>
+
+## Proxy Testing
+
+### Manual Test
+
+Test proxies manually before adding them:
+
+```bash
+curl -x http://user:pass@proxy.example.com:8080 https://api.ipify.org
+```
+
+This should return the proxy's IP address, not your real IP.
+
+### Session Test
+
+Test session rotation:
+
+```bash
+curl -x http://user:pass@proxy.example.com:8080:1234567890 https://api.ipify.org
+curl -x http://user:pass@proxy.example.com:8080:0987654321 https://api.ipify.org
+```
+
+Different session IDs should return different IP addresses.
+
+## Best Practices
+
+<Tip>
+**Proxy recommendations**:
+
+- Use residential proxies for better success rates
+- Rotate sessions to distribute requests across IPs
+- Use multiple proxy providers for redundancy
+- Test proxies before adding them to the list
+- Monitor proxy performance and remove slow/dead proxies
+- Keep proxy list under 50 for easier management
+- Use datacenter proxies for cost-effectiveness
+</Tip>
+
+<Warning>
+**Avoid these issues**:
+
+- Free proxies (unreliable and often blocked)
+- Proxies shared with many users
+- Proxies from flagged IP ranges
+- Using too few proxies (increases per-proxy load)
+- Forgetting authentication credentials
+- Using blacklisted proxy providers
+</Warning>
+
+## Performance Considerations
+
+### Proxy Speed
+
+Proxies add latency to requests:
+
+```
+Direct connection: ~100ms
+Proxy connection: ~300-800ms
+Bad proxy: >2000ms or timeout
+```
+
+### Thread Distribution
+
+With 10 threads and 5 proxies:
+
+```
+Proxy 1: 2 threads (random distribution)
+Proxy 2: 3 threads
+Proxy 3: 1 thread
+Proxy 4: 2 threads
+Proxy 5: 2 threads
+```
+
+More proxies = better distribution = lower per-proxy load.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Proxies not being used">
+    **Common causes**:
+    - `proxyless` is set to `true` in config.json
+    - Empty `input/proxies.txt` file
+    - File permission issues
+    
+    **Solutions**:
+    - Set `"proxyless": false` in config.json
+    - Add at least one proxy to the file
+    - Verify file exists and is readable: `cat input/proxies.txt`
+  </Accordion>
+  
+  <Accordion title="Proxy authentication failing">
+    **Common causes**:
+    - Incorrect username or password
+    - Special characters in password not escaped
+    - Proxy service expired or account suspended
+    - IP whitelist not configured
+    
+    **Solutions**:
+    - Verify credentials with proxy provider
+    - URL-encode special characters in password
+    - Check proxy service account status
+    - Add your server IP to proxy whitelist
+  </Accordion>
+  
+  <Accordion title="All requests timing out">
+    **Common causes**:
+    - Proxy server is down or overloaded
+    - Incorrect proxy hostname or port
+    - Firewall blocking proxy connections
+    - Proxy service rate limiting
+    
+    **Solutions**:
+    - Test proxies manually with curl
+    - Verify hostname and port are correct
+    - Check firewall rules allow proxy connections
+    - Contact proxy provider about limits
+  </Accordion>
+  
+  <Accordion title="Session rotation not working">
+    **Common causes**:
+    - Proxy doesn't support session IDs
+    - Wrong session ID format for provider
+    - Session pool exhausted
+    
+    **Solutions**:
+    - Verify proxy provider supports sessions
+    - Check provider documentation for session format
+    - Contact provider about session availability
+    - Use different proxy service with session support
+  </Accordion>
+  
+  <Accordion title="Getting same IP for all threads">
+    **Common causes**:
+    - Only one proxy in the list
+    - Proxy pool doesn't rotate sessions
+    - All proxies route through same gateway
+    
+    **Solutions**:
+    - Add more proxies to `input/proxies.txt`
+    - Use sessionid placeholder for rotation
+    - Verify with proxy provider that IPs rotate
+    - Test manually: `curl -x proxy https://api.ipify.org`
+  </Accordion>
+</AccordionGroup>
+
+## Proxy Providers
+
+<Note>
+The tool works with any HTTP/HTTPS proxy provider that supports authentication. Popular options include:
+
+- **Residential**: Better for avoiding detection, higher success rate
+- **Datacenter**: Faster and cheaper, may be detected more easily
+- **Rotating**: Automatically change IPs, use sessionid for control
+- **Static**: Same IP for duration, good for consistency
+</Note>
+
+### Provider Requirements
+
+✅ **Required**:
+- HTTP/HTTPS protocol support
+- Username/password authentication
+- Reliable uptime (99%+)
+
+✅ **Recommended**:
+- Session ID support for rotation
+- Geographic targeting options
+- Good success rate with Discord
+- Responsive customer support
+
+❌ **Avoid**:
+- SOCKS-only proxies (not supported)
+- IP whitelist-only authentication
+- Free/public proxies
+- Proxies with poor reputation
