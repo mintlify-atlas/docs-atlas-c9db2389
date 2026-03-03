@@ -12,58 +12,33 @@ Filly supports multiple invite formats. Add one invite per line in `input/invite
 
 ### Supported Formats
 
-<Tabs>
-  <Tab title="Invite code only">
-    Just the invite code (recommended):
-    
-    ```txt
-    abc123xyz
-    example
-    test123
-    ```
-    
-    <Info>
-    This is the cleanest and recommended format.
-    </Info>
-  </Tab>
-  
-  <Tab title="discord.gg URL">
-    Full discord.gg URL:
-    
-    ```txt
-    discord.gg/abc123xyz
-    discord.gg/example
-    discord.gg/test123
-    ```
-  </Tab>
-  
-  <Tab title="Full HTTPS URL">
-    Complete HTTPS URL:
-    
-    ```txt
-    https://discord.gg/abc123xyz
-    https://discord.gg/example
-    https://discord.gg/test123
-    ```
-  </Tab>
-</Tabs>
+```txt invites.txt
+abc123xyz
+def456uvw
+ghi789rst
+```
 
-<Note>
-The tool automatically extracts the invite code from any format. All three formats work identically.
-</Note>
+<Warning>
+**Only use invite codes** (e.g., `abc123xyz`). Do NOT use full URLs like `discord.gg/abc123xyz` or `https://discord.gg/abc123xyz`. The tool does not extract codes from URLs - it passes the entire line directly to the API, which will fail with URLs.
+</Warning>
 
-## Invite Extraction
+<Info>
+You can find the invite code in Discord server invite links. For example, from `https://discord.gg/abc123xyz`, use only `abc123xyz`.
+</Info>
 
-The tool uses the Discord API endpoint with the invite code:
+## How Invites Work
+
+The tool uses the Discord API endpoint directly with the invite code from your file:
 
 ```python
+# From index.py:187
 response = self.session.post(
     f"https://discord.com/api/v9/invites/{invite}",
     json={}
 )
 ```
 
-If you provide a full URL like `https://discord.gg/abc123xyz`, only the code portion (`abc123xyz`) should be extracted before use.
+Each line from `invites.txt` is inserted directly into the API URL without any processing or extraction.
 
 ## How Invites Work
 

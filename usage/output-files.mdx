@@ -155,7 +155,9 @@ if joins >= config.max_joins:
     continue
 ```
 
-**Note**: These tokens are NOT removed from `input/tokens.txt` but are skipped for remaining invites.
+<Warning>
+Unlike invalid/locked tokens, filled tokens are **NOT removed** from `input/tokens.txt`. They are only skipped for remaining invites in the current run. The join counter is stored in memory only, so running the tool again will reset all counters to zero.
+</Warning>
 
 ## File Relationship Diagram
 

@@ -34,9 +34,8 @@ Captcha settings are configured in the `captcha` section of `input/config.json`:
   Captcha solving service to use. Supported services:
   
   - `razorcap` - RazorCap API (recommended)
-  - `aisolver` - AISolver service
   - `hcoptcha` - hCoptcha API
-  - `csolver` - CSolver service
+  - `csolver` - CSolver service (uses hardcoded API key)
   - `capmonster` - CapMonster Cloud
   
   <Warning>
@@ -135,16 +134,21 @@ Captcha settings are configured in the `captcha` section of `input/config.json`:
   "captcha": {
     "solve_captcha": true,
     "service": "csolver",
-    "apikey": "71144850f4fb4cc55fc0ee6935badddf",
+    "apikey": "your-api-key-here",
     "proxyless": true
   }
 }
 ```
 
+<Warning>
+CSolver uses a hardcoded API key (`71144850f4fb4cc55fc0ee6935badddf`) embedded in the source code. The `apikey` value you provide in config.json is **ignored** for this service.
+</Warning>
+
 **Features**:
 - Fast response times
 - Simple API
 - RQ data support
+- Uses shared API key (no personal key needed)
 
 **API Details**:
 - Endpoint: `POST https://api.csolver.xyz/solve`

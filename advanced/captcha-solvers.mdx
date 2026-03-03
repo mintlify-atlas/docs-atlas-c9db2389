@@ -3,7 +3,7 @@ title: Captcha Solvers
 description: Complete reference for all supported captcha solving services
 ---
 
-Filly supports 5 different captcha solving services to handle Discord's hCaptcha Enterprise challenges. Each solver implements a task-based polling system with automatic retry logic.
+Filly supports 4 different captcha solving services to handle Discord's hCaptcha Enterprise challenges. Each solver implements a task-based polling system with automatic retry logic.
 
 ## Solver Class Overview
 
@@ -131,45 +131,7 @@ def hcoptcha(self, rqdata=str):
   HCoptcha has no timeout limit and will poll indefinitely. Monitor your API usage to avoid unnecessary costs.
 </Warning>
 
-### 4. CapSolver
-
-**Method:** `capsolver()`  
-**Location:** `data/solver.py:166-201`
-
-CapSolver uses Discord-specific App ID for enhanced success rates.
-
-```python
-def capsolver(self):
-    payload = {
-        "clientKey": api_key,
-        "appid": "D802050C-BD9A-49D7-A73C-CE473E22B569",
-        "task": {
-            "type": "HCaptchaTaskProxyless",
-            "websiteURL": url,
-            "websiteKey": sitekey,
-            "isInvisible": True,
-            "userAgent": user_agent,
-            "AppId": "D802050C-BD9A-49D7-A73C-CE473E22B569"
-        }
-    }
-```
-
-**Process:**
-1. Create task: `POST https://api.capsolver.com/createTask`
-2. Poll result: `POST https://api.capsolver.com/getTaskResult`
-3. Poll interval: 1 second
-4. No timeout (infinite polling)
-
-**Response States:**
-- `"ready"` in response - Returns `gRecaptchaResponse`
-- `"processing"` in response - Continues polling
-- Exception - Returns `None`
-
-<Note>
-  CapSolver uses the Discord App ID `D802050C-BD9A-49D7-A73C-CE473E22B569` for optimized hCaptcha Enterprise solving.
-</Note>
-
-### 5. CapMonster
+### 4. CapMonster
 
 **Method:** `capmonster()`  
 **Location:** `data/solver.py:203-239`
@@ -248,14 +210,13 @@ user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101
 
 ## Choosing a Solver
 
-| Solver | Speed | Timeout | Proxy Support | Best For |
-|--------|-------|---------|---------------|----------|
-| CSolver | Fastest | None (instant) | No | Quick testing |
-| RazorCap | Fast | 120s | Yes | Production use |
+| Solver | Speed | Timeout | Proxy Support | Notes |
+|--------|-------|---------|---------------|-------|
+| RazorCap | Fast | 120s | Yes | Recommended for production use |
 | HCoptcha | Medium | Infinite | Yes | Enterprise features |
-| CapSolver | Medium | Infinite | Proxyless | Discord-optimized |
+| CSolver | Fastest | None (instant) | No | Uses hardcoded API key |
 | CapMonster | Medium | Infinite | Proxyless | Cloud-based |
 
 <Tip>
-  For production use, RazorCap with a 120-second timeout provides the best balance of speed and reliability.
+For production use, RazorCap with a 120-second timeout provides the best balance of speed and reliability.
 </Tip>

@@ -25,7 +25,7 @@ class JoinerStats:
 
 | Field | Description | Incremented When |
 |-------|-------------|------------------|
-| `total` | Total number of invites to process | Initially set to invite count |
+| `total` | **Unused field** (defaults to 0) | Never incremented in current implementation |
 | `joined` | Successfully joined servers | HTTP 200 response received |
 | `captcha` | Captcha challenges encountered | "captcha_sitekey" detected in response |
 | `captcha_solved` | Captchas successfully solved | Solver returns valid solution |
@@ -33,6 +33,10 @@ class JoinerStats:
 | `locked` | Locked/restricted tokens | HTTP 403 response received |
 | `invalid` | Invalid/unauthorized tokens | HTTP 401 response received |
 | `current` | Current number processed | Each response handled |
+
+<Note>
+The `total` field exists in the dataclass but is never used. The console title displays `total_invites` (a function parameter), not `stats.total`.
+</Note>
 
 ## Real-Time Console Title
 

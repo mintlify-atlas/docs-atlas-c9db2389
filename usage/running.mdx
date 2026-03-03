@@ -108,6 +108,16 @@ The tool uses multi-threading with thread-safe logging:
   The tool will attempt to gracefully shut down, saving all output files and displaying partial statistics. The title update thread is configured as a daemon thread to prevent hanging.
 </Accordion>
 
+<Accordion title="Why did the tool stop processing invites early?">
+  The tool has a **critical safety feature**: if ANY token is marked as invalid (401) or locked (403), the entire invite processing loop stops immediately. This prevents wasting API calls and captcha solves on a batch with compromised tokens. Check `invalid.txt` or `locked.txt` to see which token triggered the stop.
+  
+  ```python
+  # From index.py:274-275
+  if stats.invalid > 0 or stats.locked > 0:
+      break
+  ```
+</Accordion>
+
 ## Exit Process
 
 When the tool completes:
