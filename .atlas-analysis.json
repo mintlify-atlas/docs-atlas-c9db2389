@@ -1,0 +1,76 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Filly",
+  "projectDescription": "A Python automation tool for joining Discord servers using multiple account tokens with captcha solving and proxy support",
+  "theme": "aspen",
+  "primaryColor": "#7289DA",
+  "lightColor": "#5865F2",
+  "darkColor": "#404EED",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/overview",
+          "configuration/tokens",
+          "configuration/invites",
+          "configuration/proxies",
+          "configuration/captcha"
+        ]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/running",
+          "usage/output-files",
+          "usage/statistics"
+        ]
+      },
+      {
+        "group": "Advanced",
+        "pages": [
+          "advanced/captcha-solvers",
+          "advanced/threading",
+          "advanced/troubleshooting"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/configuration-options",
+          "reference/api-integration"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-threaded Discord server joining",
+    "Token management and validation",
+    "Multiple captcha solver integrations (RazorCap, AISolver, HCOptcha, CSolver, CapMonster)",
+    "Proxy support for anonymity",
+    "Comprehensive logging and statistics tracking",
+    "Automatic token cleanup (invalid/locked)"
+  ],
+  "publicApiSurface": [
+    "DiscordJoiner.join_server()",
+    "TokenManager.remove_token()",
+    "TokenManager.increment_joins()",
+    "Solver.razorcap()",
+    "Solver.aisolver2()",
+    "Solver.hcoptcha()",
+    "Solver.csolver()",
+    "Solver.capmonster()",
+    "NovaLogger.win()",
+    "NovaLogger.fail()",
+    "NovaLogger.alert()",
+    "NovaLogger.note()"
+  ]
+}
